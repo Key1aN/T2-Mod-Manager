@@ -12,6 +12,9 @@ Intro Skip, widescreen, or difficulty modifications.
 - Original game files are identified by exact SHA-256 fingerprints.
 - Vanilla backups are immutable after creation and verification.
 - Activate and deactivate operations are rebuilt from the vanilla backup.
+- A user-imported, exact-hash compatibility EXE can act as the fixed-vanilla
+  fallback when no gameplay EXE mod is active. It is stored separately from
+  the immutable retail backup and is never included in this repository.
 - Candidate files are produced in a same-volume staging directory.
 - The manager validates the PE, AFS, LPAC, payload hashes, and output hashes
   before replacing either live game file.
@@ -48,7 +51,7 @@ dotnet publish src/T2ModManager.App/T2ModManager.App.csproj `
 ```
 
 The GitHub Actions workflow publishes a self-contained, single-file Windows
-build named `T2-Mod-Manager.exe`.
+build named `T2-Mod-Manager-Disc-Fallback-v1.exe`.
 
 ## First supported retail fingerprint
 
@@ -58,14 +61,17 @@ build named `T2-Mod-Manager.exe`.
 | `TMNT.DAT` | 502,067,200 | `cadae3cea3ad60a1f61acf4984f47adb15efccc880fe82c254b332196caa04b2` |
 
 See `docs/ORIGINAL_US_FINGERPRINTS.md` for the archive-entry fingerprint.
+See `docs/COMPATIBILITY_EXECUTABLES.md` for the optional fixed-vanilla import.
 See `docs/RELEASE_NAMES.md` for the unique branch, workflow, artifact, binary,
 symbol, and package names reserved for v0.1.
 
 ## Public-release rule
 
 Do not commit, package, or publish original `TMNT2.exe`, original `TMNT.DAT`,
-or extracted retail assets. A public mod package contains only author-supplied
-mod payloads and/or deltas plus a manifest.
+the optional compatibility EXE, or extracted retail assets. A public mod
+package contains only author-supplied mod payloads and/or deltas plus a
+manifest. Users must import the supported compatibility EXE from their own
+local copy.
 
 ## Licensing
 

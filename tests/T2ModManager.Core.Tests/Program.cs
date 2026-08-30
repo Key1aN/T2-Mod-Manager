@@ -1,8 +1,12 @@
 using System.Security.Cryptography;
+using System.Text.Json;
 using T2ModManager.Core.Archives;
 using T2ModManager.Core.Conflict;
+using T2ModManager.Core.Hashing;
 using T2ModManager.Core.Models;
+using T2ModManager.Core.Packages;
 using T2ModManager.Core.Patching;
+using T2ModManager.Core.Transactions;
 using T2ModManager.Core.Validation;
 
 string root = Path.Combine(Path.GetTempPath(), $"cmm-tests-{Guid.NewGuid():N}");
@@ -14,6 +18,10 @@ try
     await AfsReplacementRoundTripAsync(root);
     LpacValidation(root);
     ConflictDetection();
+    CompatibilityStateRoundTrip();
+    LegacyStateRemainsReadable();
+    CompatibilityIdentity();
+    await ExecutableOnlyTransactionLeavesArchiveUntouchedAsync(root);
     Console.WriteLine("All T2 Mod Manager v0.1 core tests passed.");
     return 0;
 }
@@ -85,6 +93,87 @@ static void ConflictDetection()
     ModManifest second = Manifest("second", "afs:TMNT.DAT:143");
     IReadOnlyList<ModConflict> conflicts = ConflictDetector.FindConflicts([first, second]);
     Assert(conflicts.Count == 1 && conflicts[0].ResourceId == "afs:TMNT.DAT:143", "Exclusive conflict was not detected.");
+}
+
+static void CompatibilityStateRoundTrip()
+{
+    KnownCompatibilityExecutable known = KnownCompatibilityExecutables.ObsoleteDiscCheckFixUsNa;
+    InstalledState source = new()
+    {
+        CompatibilityExecutable = new CompatibilityExecutableState
+        {
+            Id = known.Id,
+            DisplayName = known.DisplayName,
+            Size = known.Size,
+            Sha256 = known.Sha256,
+            Enabled = true
+        }
+    };
+    byte[] json = JsonSerializer.SerializeToUtf8Bytes(source, ManifestSerializer.JsonOptions);
+    InstalledState restored = JsonSerializer.Deserialize<InstalledState>(
+        json,
+        ManifestSerializer.JsonOptions) ?? throw new InvalidDataException("State did not deserialize.");
+    Assert(
+        restored.CompatibilityExecutable is { Enabled: true } compatibility &&
+        compatibility.Id == known.Id &&
+        compatibility.Size == known.Size &&
+        compatibility.Sha256 == known.Sha256,
+        "Compatibility executable state did not round trip.");
+}
+
+static void LegacyStateRemainsReadable()
+{
+    const string legacyJson = """
+        {
+          "schemaVersion": 1,
+          "mods": []
+        }
+        """;
+    InstalledState restored = JsonSerializer.Deserialize<InstalledState>(
+        legacyJson,
+        ManifestSerializer.JsonOptions) ?? throw new InvalidDataException("Legacy state did not deserialize.");
+    Assert(restored.CompatibilityExecutable is null, "Legacy state unexpectedly enabled a compatibility EXE.");
+}
+
+static void CompatibilityIdentity()
+{
+    KnownCompatibilityExecutable known = KnownCompatibilityExecutables.ObsoleteDiscCheckFixUsNa;
+    Assert(known.Size == 4_796_416, "Compatibility EXE size changed.");
+    Assert(
+        known.Sha256 == "86d508d0ba5905cb457577a3a43c3e397de5e835e2a221c97c3caca7132069ab",
+        "Compatibility EXE allowlist hash changed.");
+}
+
+static async Task ExecutableOnlyTransactionLeavesArchiveUntouchedAsync(string root)
+{
+    string gameDirectory = Path.Combine(root, "exe-only-game");
+    string stagingDirectory = Path.Combine(gameDirectory, "stage-input");
+    Directory.CreateDirectory(gameDirectory);
+    Directory.CreateDirectory(stagingDirectory);
+    GameInstallation installation = new(gameDirectory);
+    byte[] originalExecutable = RandomNumberGenerator.GetBytes(4096);
+    byte[] replacementExecutable = RandomNumberGenerator.GetBytes(4096);
+    byte[] originalArchive = RandomNumberGenerator.GetBytes(8192);
+    await File.WriteAllBytesAsync(installation.ExecutablePath, originalExecutable);
+    await File.WriteAllBytesAsync(installation.ArchivePath, originalArchive);
+    string stagedExecutable = Path.Combine(stagingDirectory, "TMNT2.exe");
+    await File.WriteAllBytesAsync(stagedExecutable, replacementExecutable);
+    string expectedExecutableHash = await Sha256Service.HashFileAsync(stagedExecutable);
+    string expectedArchiveHash = await Sha256Service.HashFileAsync(installation.ArchivePath);
+
+    await TransactionalFileInstaller.CommitExecutableAsync(
+        installation,
+        stagedExecutable,
+        expectedExecutableHash,
+        expectedArchiveHash);
+
+    Assert(
+        (await File.ReadAllBytesAsync(installation.ExecutablePath)).SequenceEqual(replacementExecutable),
+        "EXE-only transaction did not install the executable.");
+    Assert(
+        (await File.ReadAllBytesAsync(installation.ArchivePath)).SequenceEqual(originalArchive),
+        "EXE-only transaction changed the archive.");
+    await TransactionalFileInstaller.CleanupCompletedAsync(installation);
 }
 
 static ModManifest Manifest(string id, string resource) => new()

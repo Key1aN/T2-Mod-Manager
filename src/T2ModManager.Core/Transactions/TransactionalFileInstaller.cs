@@ -17,11 +17,57 @@ public static class TransactionalFileInstaller
         IProgress<OperationProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
-        RequireGameStopped();
         if (!File.Exists(stagedExecutable) || !File.Exists(stagedArchive))
         {
             throw new FileNotFoundException("Both staged game files must exist before commit.");
         }
+
+        await CommitCoreAsync(
+            installation,
+            stagedExecutable,
+            stagedArchive,
+            expectedExecutableHash,
+            expectedArchiveHash,
+            includesArchive: true,
+            progress,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    public static async Task CommitExecutableAsync(
+        GameInstallation installation,
+        string stagedExecutable,
+        string expectedExecutableHash,
+        string expectedArchiveHash,
+        IProgress<OperationProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!File.Exists(stagedExecutable))
+        {
+            throw new FileNotFoundException("The staged executable must exist before commit.");
+        }
+
+        await CommitCoreAsync(
+            installation,
+            stagedExecutable,
+            stagedArchive: string.Empty,
+            expectedExecutableHash,
+            expectedArchiveHash,
+            includesArchive: false,
+            progress,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task CommitCoreAsync(
+        GameInstallation installation,
+        string stagedExecutable,
+        string stagedArchive,
+        string expectedExecutableHash,
+        string expectedArchiveHash,
+        bool includesArchive,
+        IProgress<OperationProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        RequireGameStopped();
 
         Directory.CreateDirectory(installation.ManagerDirectory);
         Directory.CreateDirectory(installation.RollbackDirectory);
@@ -43,6 +89,7 @@ public static class TransactionalFileInstaller
             RollbackArchive = rollbackArchive,
             ExpectedExecutableSha256 = expectedExecutableHash,
             ExpectedArchiveSha256 = expectedArchiveHash,
+            IncludesArchive = includesArchive,
             Phase = TransactionPhase.Prepared
         };
         await SaveJournalAsync(installation.JournalPath, journal, cancellationToken)
@@ -56,11 +103,14 @@ public static class TransactionalFileInstaller
             await SaveJournalAsync(installation.JournalPath, journal, cancellationToken)
                 .ConfigureAwait(false);
 
-            progress?.Report(new OperationProgress("commit", "Installing TMNT.DAT…", 0.55));
-            File.Replace(stagedArchive, installation.ArchivePath, rollbackArchive, ignoreMetadataErrors: true);
-            journal.Phase = TransactionPhase.DatCommitted;
-            await SaveJournalAsync(installation.JournalPath, journal, cancellationToken)
-                .ConfigureAwait(false);
+            if (includesArchive)
+            {
+                progress?.Report(new OperationProgress("commit", "Installing TMNT.DAT…", 0.55));
+                File.Replace(stagedArchive, installation.ArchivePath, rollbackArchive, ignoreMetadataErrors: true);
+                journal.Phase = TransactionPhase.DatCommitted;
+                await SaveJournalAsync(installation.JournalPath, journal, cancellationToken)
+                    .ConfigureAwait(false);
+            }
 
             progress?.Report(new OperationProgress("commit", "Verifying the installed files…", 0.75));
             string executableHash = await Sha256Service.HashFileAsync(
@@ -114,7 +164,10 @@ public static class TransactionalFileInstaller
         if (journal.Phase == TransactionPhase.RolledBack)
         {
             DeleteIfExists(journal.StagedExecutable);
-            DeleteIfExists(journal.StagedArchive);
+            if (journal.IncludesArchive)
+            {
+                DeleteIfExists(journal.StagedArchive);
+            }
             File.Delete(installation.JournalPath);
             return;
         }
@@ -143,9 +196,15 @@ public static class TransactionalFileInstaller
         }
 
         DeleteIfExists(journal.RollbackExecutable);
-        DeleteIfExists(journal.RollbackArchive);
+        if (journal.IncludesArchive)
+        {
+            DeleteIfExists(journal.RollbackArchive);
+        }
         DeleteIfExists(journal.StagedExecutable);
-        DeleteIfExists(journal.StagedArchive);
+        if (journal.IncludesArchive)
+        {
+            DeleteIfExists(journal.StagedArchive);
+        }
         File.Delete(installation.JournalPath);
     }
 
@@ -157,7 +216,7 @@ public static class TransactionalFileInstaller
         journal.Phase = TransactionPhase.RollingBack;
         await SaveJournalAsync(installation.JournalPath, journal, cancellationToken).ConfigureAwait(false);
 
-        if (File.Exists(journal.RollbackArchive))
+        if (journal.IncludesArchive && File.Exists(journal.RollbackArchive))
         {
             File.Replace(journal.RollbackArchive, installation.ArchivePath, null, ignoreMetadataErrors: true);
         }

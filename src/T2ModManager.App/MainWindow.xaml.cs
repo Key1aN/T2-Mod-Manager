@@ -26,6 +26,17 @@ public partial class MainWindow : Window
         _selectedGameDirectory = _state.GameDirectory ?? _selectedGameDirectory;
         GamePathText.Text = _selectedGameDirectory ?? "No game folder selected";
         bool initialized = !string.IsNullOrWhiteSpace(_state.GameDirectory);
+        CompatibilityExecutableState? compatibility = _state.CompatibilityExecutable;
+        DiscFixStatusText.Text = compatibility is null
+            ? "Not imported"
+            : compatibility.Enabled ? "Active baseline" : "Inactive";
+        DiscFixStatusBadge.Background = compatibility?.Enabled == true
+            ? new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(32, 112, 79))
+            : new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(52, 59, 74));
+        DiscFixButton.Content = compatibility is null
+            ? "Import & Enable Fix EXE"
+            : compatibility.Enabled ? "Disable Fix" : "Enable Fix";
+        DiscFixButton.IsEnabled = !_isBusy && initialized;
         InstalledMod? mod = _state.Mods.FirstOrDefault(item => item.Id == "Ultimate_Slashuur");
         ModStatusText.Text = mod is null ? "Not installed" : mod.Active ? "Active" : "Inactive";
         ModStatusBadge.Background = mod?.Active == true
@@ -90,12 +101,34 @@ public partial class MainWindow : Window
     {
         MessageBoxResult choice = MessageBox.Show(
             this,
-            "Restore the verified vanilla TMNT2.exe and TMNT.DAT and deactivate all mods?",
-            "Restore Vanilla",
+            "Restore the untouched retail TMNT2.exe and vanilla TMNT.DAT? This deactivates all mods and the obsolete disc-check fix.",
+            "Restore Retail Original",
             MessageBoxButton.YesNo,
             MessageBoxImage.Question);
         if (choice != MessageBoxResult.Yes) return;
-        await RunOperationAsync(progress => _service.RestoreVanillaAsync(progress));
+        await RunOperationAsync(progress => _service.RestoreRetailOriginalAsync(progress));
+    }
+
+    private async void DiscFixButton_Click(object sender, RoutedEventArgs e)
+    {
+        CompatibilityExecutableState? compatibility = _state.CompatibilityExecutable;
+        if (compatibility is null)
+        {
+            OpenFileDialog dialog = new()
+            {
+                Title = "Select the supported US/NA obsolete disc-check fix EXE",
+                Filter = "TMNT2 executable (*.exe)|*.exe",
+                Multiselect = false
+            };
+            if (dialog.ShowDialog(this) != true) return;
+            await RunOperationAsync(progress =>
+                _service.ImportAndEnableCompatibilityExecutableAsync(dialog.FileName, progress));
+            return;
+        }
+
+        await RunOperationAsync(progress => compatibility.Enabled
+            ? _service.DisableCompatibilityExecutableAsync(progress)
+            : _service.EnableCompatibilityExecutableAsync(progress));
     }
 
     private void LaunchButton_Click(object sender, RoutedEventArgs e)

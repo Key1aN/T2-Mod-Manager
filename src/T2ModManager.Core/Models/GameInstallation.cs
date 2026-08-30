@@ -39,3 +39,18 @@ public static class KnownGameBuilds
         ArchiveSize: 502_067_200,
         ArchiveSha256: "cadae3cea3ad60a1f61acf4984f47adb15efccc880fe82c254b332196caa04b2");
 }
+
+public sealed record KnownCompatibilityExecutable(
+    string Id,
+    string DisplayName,
+    long Size,
+    string Sha256);
+
+public static class KnownCompatibilityExecutables
+{
+    public static readonly KnownCompatibilityExecutable ObsoleteDiscCheckFixUsNa = new(
+        Id: "tmnt2-pc-us-na-obsolete-disc-check-fix-v1",
+        DisplayName: "Fix Obsolete Disc Check",
+        Size: 4_796_416,
+        Sha256: "86d508d0ba5905cb457577a3a43c3e397de5e835e2a221c97c3caca7132069ab");
+}

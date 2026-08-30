@@ -1,8 +1,8 @@
 <Window x:Class="T2ModManager.App.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="T2 Mod Manager" Width="1040" Height="680"
-        MinWidth="900" MinHeight="600" Background="{StaticResource WindowBrush}"
+        Title="T2 Mod Manager" Width="1080" Height="760"
+        MinWidth="980" MinHeight="720" Background="{StaticResource WindowBrush}"
         WindowStartupLocation="CenterScreen" Loaded="Window_Loaded">
     <Grid Margin="30">
         <Grid.RowDefinitions>
@@ -93,11 +93,29 @@
                     BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" Padding="22"
                     Margin="12,0,0,0">
                 <StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Fix Obsolete Disc Check" FontSize="18" FontWeight="Bold"/>
+                        <Border Grid.Column="1" x:Name="DiscFixStatusBadge" Background="#343B4A"
+                                CornerRadius="12" Padding="10,4" VerticalAlignment="Top">
+                            <TextBlock x:Name="DiscFixStatusText" Text="Not imported" FontWeight="SemiBold"
+                                       FontSize="12"/>
+                        </Border>
+                    </Grid>
+                    <TextBlock Text="Optional fixed-vanilla EXE baseline for modern Windows. It stays active when gameplay mods are disabled; the untouched retail backup is never changed."
+                               Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"
+                               LineHeight="20" Margin="0,10,0,14"/>
+                    <Button x:Name="DiscFixButton" Content="Import Fix EXE"
+                            Click="DiscFixButton_Click" Background="#2B3343" IsEnabled="False"/>
+                    <Separator Margin="0,24" Background="{StaticResource BorderBrush}"/>
                     <TextBlock Text="Recovery" FontSize="18" FontWeight="Bold"/>
-                    <TextBlock Text="Return the managed installation to its verified retail state."
+                    <TextBlock Text="Deactivate all mods and the compatibility fix, then restore the verified retail EXE and DAT."
                                Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"
                                LineHeight="21" Margin="0,10,0,18"/>
-                    <Button x:Name="RestoreButton" Content="Restore Vanilla"
+                    <Button x:Name="RestoreButton" Content="Restore Retail Original"
                             Click="RestoreButton_Click" Background="#2B3343" IsEnabled="False"/>
                     <Separator Margin="0,24" Background="{StaticResource BorderBrush}"/>
                     <TextBlock Text="Protection" FontSize="18" FontWeight="Bold"/>

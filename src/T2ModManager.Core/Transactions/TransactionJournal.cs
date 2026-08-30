@@ -21,8 +21,8 @@ public sealed class TransactionJournal
     public required string RollbackArchive { get; init; }
     public required string ExpectedExecutableSha256 { get; init; }
     public required string ExpectedArchiveSha256 { get; init; }
+    public bool IncludesArchive { get; init; } = true;
     public TransactionPhase Phase { get; set; }
     public DateTimeOffset StartedAtUtc { get; init; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
 }
-

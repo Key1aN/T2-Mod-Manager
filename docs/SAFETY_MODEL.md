@@ -6,13 +6,17 @@
    a candidate is being built.
 2. A vanilla backup is accepted only after its size and SHA-256 match a known
    retail fingerprint.
-3. Every desired mod state is rebuilt from the vanilla backup.
+3. Every gameplay mod state is rebuilt from the vanilla backup. The optional
+   fixed-vanilla EXE is a separately stored, exact-hash fallback and is never
+   used as an input for a gameplay EXE delta.
 4. A package operation may write only to a predefined target understood by the
    manager. Package scripts and arbitrary destination paths are unsupported.
 5. Every package payload has an expected SHA-256 and uncompressed size.
 6. Every generated output is validated before commit.
 7. Conflicts are resolved before staging begins.
 8. The game must not be running during commit or recovery.
+9. The compatibility EXE is accepted only when its Win32 format, size, and
+   SHA-256 match the supported allowlist, and it is reverified before each use.
 
 ## Commit and recovery
 
@@ -30,6 +34,10 @@ Instead, the manager provides crash-recoverable transactional behavior:
 Staging and rollback files are created beneath the selected game directory so
 file replacement remains on the same volume.
 
+An EXE-only state change uses the same journal and rollback model but skips the
+DAT staging and commit phases. The live DAT hash is still verified before and
+after the EXE transaction.
+
 ## Conflict identities
 
 Examples of resource IDs:
@@ -43,4 +51,3 @@ Examples of resource IDs:
 Two enabled mods cannot claim the same exclusive resource. A future trusted
 merge handler can explicitly convert selected resource types from exclusive
 to mergeable; packages cannot provide executable merge code themselves.
-

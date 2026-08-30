@@ -148,11 +148,98 @@ public sealed class ModManagerService
         await ApplyDesiredStateAsync(state, desired, progress, cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task RestoreVanillaAsync(
+    public async Task ImportAndEnableCompatibilityExecutableAsync(
+        string executablePath,
         IProgress<OperationProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
         InstalledState state = await RequireInitializedStateAsync(cancellationToken).ConfigureAwait(false);
+        string fullPath = Path.GetFullPath(executablePath);
+        KnownCompatibilityExecutable known = KnownCompatibilityExecutables.ObsoleteDiscCheckFixUsNa;
+
+        progress?.Report(new OperationProgress(
+            "verify",
+            "Verifying the selected obsolete disc-check fix…",
+            0.02));
+        _ = PeValidator.ValidateWin32Executable(fullPath);
+        await RequireFileFingerprintAsync(fullPath, known.Size, known.Sha256, cancellationToken)
+            .ConfigureAwait(false);
+
+        Directory.CreateDirectory(_paths.ObsoleteDiscCheckFixDirectory);
+        string temporaryPath = _paths.ObsoleteDiscCheckFixExecutable + ".new";
+        if (File.Exists(temporaryPath))
+        {
+            File.Delete(temporaryPath);
+        }
+
+        try
+        {
+            await CopyFileAsync(fullPath, temporaryPath, cancellationToken).ConfigureAwait(false);
+            await RequireFileFingerprintAsync(temporaryPath, known.Size, known.Sha256, cancellationToken)
+                .ConfigureAwait(false);
+            File.Move(temporaryPath, _paths.ObsoleteDiscCheckFixExecutable, overwrite: true);
+        }
+        finally
+        {
+            if (File.Exists(temporaryPath))
+            {
+                File.Delete(temporaryPath);
+            }
+        }
+
+        state.CompatibilityExecutable = new CompatibilityExecutableState
+        {
+            Id = known.Id,
+            DisplayName = known.DisplayName,
+            Size = known.Size,
+            Sha256 = known.Sha256,
+            Enabled = true
+        };
+        await ApplyDesiredStateAsync(
+            state,
+            GetActiveModIds(state),
+            progress,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task EnableCompatibilityExecutableAsync(
+        IProgress<OperationProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        InstalledState state = await RequireInitializedStateAsync(cancellationToken).ConfigureAwait(false);
+        CompatibilityExecutableState compatibility = RequireImportedCompatibilityExecutable(state);
+        await RequireStoredCompatibilityExecutableAsync(compatibility, cancellationToken).ConfigureAwait(false);
+        compatibility.Enabled = true;
+        await ApplyDesiredStateAsync(
+            state,
+            GetActiveModIds(state),
+            progress,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task DisableCompatibilityExecutableAsync(
+        IProgress<OperationProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        InstalledState state = await RequireInitializedStateAsync(cancellationToken).ConfigureAwait(false);
+        CompatibilityExecutableState compatibility = RequireImportedCompatibilityExecutable(state);
+        compatibility.Enabled = false;
+        await ApplyDesiredStateAsync(
+            state,
+            GetActiveModIds(state),
+            progress,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task RestoreRetailOriginalAsync(
+        IProgress<OperationProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        InstalledState state = await RequireInitializedStateAsync(cancellationToken).ConfigureAwait(false);
+        if (state.CompatibilityExecutable is not null)
+        {
+            state.CompatibilityExecutable.Enabled = false;
+        }
         await ApplyDesiredStateAsync(
             state,
             new HashSet<string>(StringComparer.OrdinalIgnoreCase),
@@ -175,6 +262,7 @@ public sealed class ModManagerService
             .ConfigureAwait(false);
         await RequireCurrentStateUntamperedAsync(state, installation, progress, cancellationToken)
             .ConfigureAwait(false);
+        bool archiveStateChanged = DoesArchiveStateChange(state, desiredModIds);
 
         VanillaBackup backup = await _backupService.OpenVerifiedBackupAsync(
             state.GameBuildId!,
@@ -193,41 +281,70 @@ public sealed class ModManagerService
             }
 
             ValidateDesiredSet(packages.Select(package => package.Manifest).ToArray());
-            RequireFreeSpace(installation, KnownGameBuilds.UsNaRetail.ArchiveSize + 128L * 1024L * 1024L);
+            long requiredSpace = archiveStateChanged
+                ? KnownGameBuilds.UsNaRetail.ArchiveSize + 128L * 1024L * 1024L
+                : 64L * 1024L * 1024L;
+            RequireFreeSpace(installation, requiredSpace);
 
             string stagedExecutable = Path.Combine(stageDirectory, "TMNT2.exe");
             string stagedArchive = Path.Combine(stageDirectory, "TMNT.DAT");
+            string? compatibilityExecutable = null;
+            if (state.CompatibilityExecutable?.Enabled == true)
+            {
+                await RequireStoredCompatibilityExecutableAsync(
+                    state.CompatibilityExecutable,
+                    cancellationToken).ConfigureAwait(false);
+                compatibilityExecutable = _paths.ObsoleteDiscCheckFixExecutable;
+            }
             await BuildExecutableAsync(
                 backup.ExecutablePath,
+                compatibilityExecutable,
                 stagedExecutable,
                 packages,
                 stageDirectory,
                 progress,
                 cancellationToken).ConfigureAwait(false);
-            await BuildArchiveAsync(
-                backup.ArchivePath,
-                stagedArchive,
-                packages,
-                stageDirectory,
-                progress,
-                cancellationToken).ConfigureAwait(false);
+            if (archiveStateChanged)
+            {
+                await BuildArchiveAsync(
+                    backup.ArchivePath,
+                    stagedArchive,
+                    packages,
+                    stageDirectory,
+                    progress,
+                    cancellationToken).ConfigureAwait(false);
+            }
 
             progress?.Report(new OperationProgress("validate", "Validating staged game files…", 0.65));
             _ = PeValidator.ValidateWin32Executable(stagedExecutable);
-            _ = AfsArchive.Read(stagedArchive);
             string executableHash = await Sha256Service.HashFileAsync(stagedExecutable, cancellationToken)
                 .ConfigureAwait(false);
-            string archiveHash = await Sha256Service.HashFileAsync(stagedArchive, cancellationToken)
-                .ConfigureAwait(false);
-
-            await TransactionalFileInstaller.CommitAsync(
-                installation,
-                stagedExecutable,
-                stagedArchive,
-                executableHash,
-                archiveHash,
-                progress,
-                cancellationToken).ConfigureAwait(false);
+            string archiveHash;
+            if (archiveStateChanged)
+            {
+                _ = AfsArchive.Read(stagedArchive);
+                archiveHash = await Sha256Service.HashFileAsync(stagedArchive, cancellationToken)
+                    .ConfigureAwait(false);
+                await TransactionalFileInstaller.CommitAsync(
+                    installation,
+                    stagedExecutable,
+                    stagedArchive,
+                    executableHash,
+                    archiveHash,
+                    progress,
+                    cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                archiveHash = state.CurrentArchiveSha256!;
+                await TransactionalFileInstaller.CommitExecutableAsync(
+                    installation,
+                    stagedExecutable,
+                    executableHash,
+                    archiveHash,
+                    progress,
+                    cancellationToken).ConfigureAwait(false);
+            }
 
             foreach (InstalledMod mod in state.Mods)
             {
@@ -255,6 +372,7 @@ public sealed class ModManagerService
 
     private static async Task BuildExecutableAsync(
         string vanillaExecutable,
+        string? compatibilityExecutable,
         string stagedExecutable,
         IReadOnlyList<T2ModPackage> packages,
         string stageDirectory,
@@ -269,8 +387,12 @@ public sealed class ModManagerService
 
         if (operations.Count == 0)
         {
-            progress?.Report(new OperationProgress("stage", "Staging the vanilla executable…", 0.1));
-            await CopyFileAsync(vanillaExecutable, stagedExecutable, cancellationToken).ConfigureAwait(false);
+            string sourceExecutable = compatibilityExecutable ?? vanillaExecutable;
+            string message = compatibilityExecutable is null
+                ? "Staging the verified retail executable…"
+                : "Staging the obsolete disc-check compatibility executable…";
+            progress?.Report(new OperationProgress("stage", message, 0.1));
+            await CopyFileAsync(sourceExecutable, stagedExecutable, cancellationToken).ConfigureAwait(false);
             return;
         }
 
@@ -418,6 +540,30 @@ public sealed class ModManagerService
         }
     }
 
+    private static bool DoesArchiveStateChange(
+        InstalledState state,
+        IReadOnlySet<string> desiredModIds)
+    {
+        foreach (InstalledMod mod in state.Mods)
+        {
+            bool wasActive = mod.Active;
+            bool willBeActive = desiredModIds.Contains(mod.Id);
+            if (wasActive == willBeActive)
+            {
+                continue;
+            }
+
+            using T2ModPackage package = T2ModPackage.Open(mod.PackagePath);
+            RequireTarget(package.Manifest);
+            if (package.Manifest.Operations.Any(operation => operation.Type == "replace-afs-entry"))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static void RequireTarget(ModManifest manifest)
     {
         KnownGameBuild known = KnownGameBuilds.UsNaRetail;
@@ -432,12 +578,46 @@ public sealed class ModManagerService
         state.Mods.FirstOrDefault(mod => mod.Id.Equals(modId, StringComparison.OrdinalIgnoreCase))
         ?? throw new InvalidOperationException($"Mod is not installed: {modId}");
 
+    private static HashSet<string> GetActiveModIds(InstalledState state) =>
+        state.Mods
+            .Where(mod => mod.Active)
+            .Select(mod => mod.Id)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    private static CompatibilityExecutableState RequireImportedCompatibilityExecutable(
+        InstalledState state) =>
+        state.CompatibilityExecutable
+        ?? throw new InvalidOperationException("Import the supported obsolete disc-check fix EXE first.");
+
+    private async Task RequireStoredCompatibilityExecutableAsync(
+        CompatibilityExecutableState compatibility,
+        CancellationToken cancellationToken)
+    {
+        KnownCompatibilityExecutable known = KnownCompatibilityExecutables.ObsoleteDiscCheckFixUsNa;
+        if (!string.Equals(compatibility.Id, known.Id, StringComparison.Ordinal) ||
+            compatibility.Size != known.Size ||
+            !Sha256Service.EqualsHash(compatibility.Sha256, known.Sha256))
+        {
+            throw new InvalidDataException("The stored compatibility executable metadata is unsupported.");
+        }
+
+        _ = PeValidator.ValidateWin32Executable(_paths.ObsoleteDiscCheckFixExecutable);
+        await RequireFileFingerprintAsync(
+            _paths.ObsoleteDiscCheckFixExecutable,
+            known.Size,
+            known.Sha256,
+            cancellationToken).ConfigureAwait(false);
+    }
+
     private async Task<InstalledState> RequireInitializedStateAsync(CancellationToken cancellationToken)
     {
         InstalledState state = await _stateStore.LoadAsync(cancellationToken).ConfigureAwait(false);
-        if (string.IsNullOrWhiteSpace(state.GameDirectory) || string.IsNullOrWhiteSpace(state.GameBuildId))
+        if (string.IsNullOrWhiteSpace(state.GameDirectory) ||
+            string.IsNullOrWhiteSpace(state.GameBuildId) ||
+            !Sha256Service.IsSha256(state.CurrentExecutableSha256) ||
+            !Sha256Service.IsSha256(state.CurrentArchiveSha256))
         {
-            throw new InvalidOperationException("Select and verify the game folder first.");
+            throw new InvalidOperationException("Select and verify the game folder first, or repair its manager state.");
         }
 
         return state;
