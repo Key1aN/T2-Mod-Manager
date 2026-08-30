@@ -1,0 +1,80 @@
+From 156becf6353bf3693494d0ebf6901688b5bd6b49 Mon Sep 17 00:00:00 2001
+From: Key1aN <109429578+Key1aN@users.noreply.github.com>
+Date: Wed, 26 Aug 2026 22:19:34 +0330
+Subject: [PATCH 02/11] Fix Windows SDK staging
+
+---
+ .github/workflows/build-playable-slashuur.yml | 42 ++++++++++++-------
+ 1 file changed, 27 insertions(+), 15 deletions(-)
+
+diff --git a/.github/workflows/build-playable-slashuur.yml b/.github/workflows/build-playable-slashuur.yml
+index 1c5962a..97b7286 100644
+--- a/.github/workflows/build-playable-slashuur.yml
++++ b/.github/workflows/build-playable-slashuur.yml
+@@ -29,18 +29,13 @@ jobs:
+             throw "Windows 10 SDK was not found at $kitsRoot"
+           }
+ 
+-          $includeVersion = Get-ChildItem "$kitsRoot\Include" -Directory |
+-            Where-Object { Test-Path "$($_.FullName)\um\d3d9.h" } |
+-            Sort-Object Name -Descending |
++          $d3d9Header = Get-ChildItem "$kitsRoot\Include" -Recurse -File -Filter "d3d9.h" |
++            Where-Object { $_.DirectoryName -match "\\um$" } |
++            Sort-Object FullName -Descending |
+             Select-Object -First 1
+ 
+-          $libraryVersion = Get-ChildItem "$kitsRoot\Lib" -Directory |
+-            Where-Object { Test-Path "$($_.FullName)\um\x86\d3d9.lib" } |
+-            Sort-Object Name -Descending |
+-            Select-Object -First 1
+-
+-          if (-not $includeVersion -or -not $libraryVersion) {
+-            throw "A Windows SDK containing Direct3D 9 x86 files was not found."
++          if (-not $d3d9Header) {
++            throw "A Windows SDK containing the d3d9.h header was not found."
+           }
+ 
+           $dxsdk = Join-Path $env:RUNNER_TEMP "tmnt2-dxsdk"
+@@ -48,11 +43,28 @@ jobs:
+           $libOut = Join-Path $dxsdk "Lib\x86"
+           New-Item -ItemType Directory -Force -Path $includeOut, $libOut | Out-Null
+ 
+-          Copy-Item "$($includeVersion.FullName)\um\*" $includeOut -Recurse -Force
+-          Copy-Item "$($includeVersion.FullName)\shared\*" $includeOut -Recurse -Force
++          $sdkVersionRoot = Split-Path $d3d9Header.DirectoryName -Parent
++          Copy-Item "$sdkVersionRoot\um\*" $includeOut -Recurse -Force
++          Copy-Item "$sdkVersionRoot\shared\*" $includeOut -Recurse -Force
++
++          $sdkPackageVersion = "10.0.26100.7705"
++          $sdkPackageName = "microsoft.windows.sdk.cpp.x86"
++          $sdkPackageUrl = "https://api.nuget.org/v3-flatcontainer/$sdkPackageName/$sdkPackageVersion/$sdkPackageName.$sdkPackageVersion.nupkg"
++          $sdkPackageZip = Join-Path $env:RUNNER_TEMP "winsdk-x86.zip"
++          $sdkPackageOut = Join-Path $env:RUNNER_TEMP "winsdk-x86"
++
++          Invoke-WebRequest -Uri $sdkPackageUrl -OutFile $sdkPackageZip
++
++          $expectedHash = "4a8504308e253842054f0c385817522a895306308bf4d6dc11f09064bb27c280"
++          $actualHash = (Get-FileHash $sdkPackageZip -Algorithm SHA256).Hash.ToLowerInvariant()
++          if ($actualHash -ne $expectedHash) {
++            throw "Windows SDK NuGet package hash mismatch: $actualHash"
++          }
++
++          Expand-Archive -Path $sdkPackageZip -DestinationPath $sdkPackageOut -Force
+ 
+           foreach ($library in @("d3d9.lib", "dinput8.lib", "dxguid.lib", "dsound.lib")) {
+-            $source = Join-Path $libraryVersion.FullName "um\x86\$library"
++            $source = Join-Path $sdkPackageOut "c\um\x86\$library"
+             if (-not (Test-Path $source)) {
+               throw "Required DirectX library was not found: $source"
+             }
+@@ -61,8 +73,8 @@ jobs:
+ 
+           "DXSDK_DIR=$dxsdk" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+           Write-Host "DXSDK_DIR=$dxsdk"
+-          Write-Host "Windows SDK include version: $($includeVersion.Name)"
+-          Write-Host "Windows SDK library version: $($libraryVersion.Name)"
++          Write-Host "Windows SDK header source: $sdkVersionRoot"
++          Write-Host "Windows SDK x86 library package: $sdkPackageName $sdkPackageVersion"
+ 
+       - name: Configure US Win32 Release build
+         shell: pwsh

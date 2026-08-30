@@ -1,0 +1,107 @@
+From fc927bd722d587d24fc7b1fa112cc320974cc881 Mon Sep 17 00:00:00 2001
+From: Key1aN <109429578+Key1aN@users.noreply.github.com>
+Date: Sun, 30 Aug 2026 16:51:08 +0330
+Subject: [PATCH 10/11] Set adaptive teleport radius 25 and exclude flying
+ enemies
+
+---
+ .../ConcretePlayerCharacter/Slashuur.cpp      | 42 ++++++++++++++++---
+ 1 file changed, 36 insertions(+), 6 deletions(-)
+
+diff --git a/src/Game/Component/Player/ConcretePlayerCharacter/Slashuur.cpp b/src/Game/Component/Player/ConcretePlayerCharacter/Slashuur.cpp
+index 919efb9..e209ea5 100644
+--- a/src/Game/Component/Player/ConcretePlayerCharacter/Slashuur.cpp
++++ b/src/Game/Component/Player/ConcretePlayerCharacter/Slashuur.cpp
+@@ -34,7 +34,7 @@ namespace Slashuur
+ {
+     static const float BOSS_GROUND_BLAST_JUMP_SPEED = 10.606602f;
+     static const float BOSS_SCYTHE_RADIUS = 3.2f;
+-    static const float BOSS_TELEPORT_TARGET_RADIUS = 10.0f;
++    static const float BOSS_TELEPORT_TARGET_RADIUS = 25.0f;
+     static const float BOSS_TELEPORT_REAR_OFFSET = 1.0f;
+     static const int32 BOSS_DRAIN_DAMAGE = 30;
+     static const int32 BOSS_MAGIC_BONE_ID = 3;
+@@ -156,6 +156,26 @@ namespace Slashuur
+     };
+ 
+ 
++    static bool IsFlyingTeleportTarget(ENEMYID::VALUE enemyId)
++    {
++        switch (enemyId)
++        {
++        case ENEMYID::ID_TRICERATION_FLYING_HARNESS:
++        case ENEMYID::ID_BLOOD_SUCKER:
++        case ENEMYID::ID_POISON_BAT:
++        case ENEMYID::ID_HYPNOSIS_BAT:
++        case ENEMYID::ID_BOMB_BAT_MECH:
++        case ENEMYID::ID_KURAGE:
++        case ENEMYID::ID_KABUTO:
++        case ENEMYID::ID_UTROM_SAUCER:
++            return true;
++
++        default:
++            return false;
++        };
++    };
++
++
+     static int32 FindTeleportTarget(CPlayerCharacter& character)
+     {
+         CMapCamera* pMapCamera = CGameProperty::GetMapCamera();
+@@ -173,6 +193,7 @@ namespace Slashuur
+             BOSS_TELEPORT_TARGET_RADIUS * BOSS_TELEPORT_TARGET_RADIUS;
+         float nearestDistanceSq = TYPEDEF::FLOAT_MAX;
+         int32 nearestEnemyNo = -1;
++        int32 flyingEnemySkipCount = 0;
+ 
+         const int32 enemyMax = CGameProperty::GetEnemyMax();
+         for (int32 i = 0; i < enemyMax; ++i)
+@@ -181,6 +202,12 @@ namespace Slashuur
+             if (!IsTeleportTargetActive(pEnemy))
+                 continue;
+ 
++            if (IsFlyingTeleportTarget(pEnemy->GetID()))
++            {
++                ++flyingEnemySkipCount;
++                continue;
++            };
++
+             CEnemyCharacter& enemyCharacter = pEnemy->Character();
+ 
+             RwV3d enemyBodyPosition = Math::VECTOR3_ZERO;
+@@ -204,17 +231,19 @@ namespace Slashuur
+ 
+         if (nearestEnemyNo < 0)
+         {
+-            SLASHUUR_TRACE("MOVE teleport target none radius=%.3f fallback=forward",
+-                           BOSS_TELEPORT_TARGET_RADIUS);
++            SLASHUUR_TRACE("MOVE teleport target none radius=%.3f flying_skipped=%d fallback=forward",
++                           BOSS_TELEPORT_TARGET_RADIUS,
++                           flyingEnemySkipCount);
+             return -1;
+         };
+ 
+         CEnemy* pEnemy = CGameProperty::GetEnemy(nearestEnemyNo);
+-        SLASHUUR_TRACE("MOVE teleport target selected enemy=%d handle=0x%08X distance=%.3f radius=%.3f",
++        SLASHUUR_TRACE("MOVE teleport target selected enemy=%d handle=0x%08X distance=%.3f radius=%.3f flying_skipped=%d",
+                        nearestEnemyNo,
+                        (pEnemy ? pEnemy->GetHandle() : 0),
+                        std::sqrt(nearestDistanceSq),
+-                       BOSS_TELEPORT_TARGET_RADIUS);
++                       BOSS_TELEPORT_TARGET_RADIUS,
++                       flyingEnemySkipCount);
+         return nearestEnemyNo;
+     };
+ 
+@@ -228,9 +257,10 @@ namespace Slashuur
+ 
+         CEnemy* pEnemy = CGameProperty::GetEnemy(enemyNo);
+         if (!IsTeleportTargetActive(pEnemy) ||
++            IsFlyingTeleportTarget(pEnemy->GetID()) ||
+             (pEnemy->GetHandle() != expectedHandle))
+         {
+-            SLASHUUR_TRACE("MOVE teleport target lost enemy=%d expected_handle=0x%08X fallback=forward",
++            SLASHUUR_TRACE("MOVE teleport target lost enemy=%d expected_handle=0x%08X reason=invalid_flying_or_replaced fallback=forward",
+                            enemyNo,
+                            expectedHandle);
+             return false;

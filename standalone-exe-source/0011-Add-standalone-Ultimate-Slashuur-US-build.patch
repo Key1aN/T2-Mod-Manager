@@ -1,0 +1,175 @@
+From 2935bb1d3e960c11bbe744e237fc7b30145f7adc Mon Sep 17 00:00:00 2001
+From: Codex <codex@openai.com>
+Date: Sun, 30 Aug 2026 13:44:12 -0400
+Subject: [PATCH 11/11] Add standalone Ultimate Slashuur US build
+
+---
+ ...-v0.1-ultimate-slashuur-standalone-us.yml} | 69 ++++++++++++++-----
+ ULTIMATE_SLASHUUR_STANDALONE_US.md            | 28 ++++++++
+ 2 files changed, 80 insertions(+), 17 deletions(-)
+ rename .github/workflows/{build-playable-slashuur.yml => build-community-mod-manager-v0.1-ultimate-slashuur-standalone-us.yml} (68%)
+ create mode 100644 ULTIMATE_SLASHUUR_STANDALONE_US.md
+
+diff --git a/.github/workflows/build-playable-slashuur.yml b/.github/workflows/build-community-mod-manager-v0.1-ultimate-slashuur-standalone-us.yml
+similarity index 68%
+rename from .github/workflows/build-playable-slashuur.yml
+rename to .github/workflows/build-community-mod-manager-v0.1-ultimate-slashuur-standalone-us.yml
+index ff85fd2..2b488d8 100644
+--- a/.github/workflows/build-playable-slashuur.yml
++++ b/.github/workflows/build-community-mod-manager-v0.1-ultimate-slashuur-standalone-us.yml
+@@ -1,11 +1,10 @@
+-name: Build playable Slashuur diagnostics
++name: Build community-mod-manager-v0.1 Ultimate_Slashuur Standalone US
+ 
+ on:
+   workflow_dispatch:
+   push:
+     branches:
+-      - "master"
+-      - "codex/playable-slashuur-boss-moves"
++      - "feature/community-mod-manager-v0.1-ultimate-slashuur-standalone-us"
+ 
+ permissions:
+   contents: read
+@@ -19,6 +18,39 @@ jobs:
+       - name: Check out patched source
+         uses: actions/checkout@v4
+ 
++      - name: Verify standalone source scope
++        shell: pwsh
++        run: |
++          $ErrorActionPreference = "Stop"
++          $base = "dabccc3e3dc02c8a01eac1638fe1aeb589e2723b"
++          $allowed = @(
++            ".github/workflows/build-community-mod-manager-v0.1-ultimate-slashuur-standalone-us.yml",
++            "SLASHUUR_CRASH_REPORTING.md",
++            "ULTIMATE_SLASHUUR_STANDALONE_US.md",
++            "cmake/PlatformWin.cmake",
++            "src/Game/Component/Effect/Magic.cpp",
++            "src/Game/Component/Player/ConcreteManipulator/ManipulatorSlashuur.cpp",
++            "src/Game/Component/Player/ConcreteManipulator/ManipulatorSlashuur.hpp",
++            "src/Game/Component/Player/ConcretePlayerCharacter/Slashuur.cpp",
++            "src/Game/Component/Player/ConcretePlayerCharacter/Slashuur.hpp",
++            "src/Game/System/Motion/MotionManager.cpp",
++            "src/System/PC/PCCrashReporter.cpp",
++            "src/System/PC/PCCrashReporter.hpp",
++            "src/System/PC/PCDebug.cpp",
++            "src/System/PC/main.cpp"
++          )
++          $changed = @(git diff --name-only "$base..HEAD")
++          $unexpected = @($changed | Where-Object { $_ -notin $allowed })
++          if ($unexpected.Count -ne 0) {
++            throw "Standalone branch contains unexpected paths: $($unexpected -join ', ')"
++          }
++
++          $addedSource = git diff --unified=0 "$base..HEAD" -- src
++          $forbidden = $addedSource | Select-String -Pattern '^\+.*(MSAA|MULTISAMPLE|INTRO_SKIP|WIDESCREEN|DIFFICULTY_EXTREME|DIFFICULTY_SOULS|COLD_BREATH|DEVELOPER_MENU)' -CaseSensitive:$false
++          if ($forbidden) {
++            throw "Standalone branch contains a forbidden unrelated feature marker."
++          }
++
+       - name: Stage DirectX headers and x86 libraries
+         shell: pwsh
+         run: |
+@@ -120,11 +152,11 @@ jobs:
+         shell: pwsh
+         run: cmake --preset vs2022 -DOPT_EU_BUILD=OFF
+ 
+-      - name: Build patched executable
++      - name: Build Ultimate_Slashuur standalone executable
+         shell: pwsh
+         run: cmake --build --preset vs2022-release --parallel
+ 
+-      - name: Collect and verify executable
++      - name: Collect and verify unique outputs
+         shell: pwsh
+         run: |
+           $ErrorActionPreference = "Stop"
+@@ -160,15 +192,15 @@ jobs:
+             throw "The matching Release TMNT2.map was not found."
+           }
+ 
+-          $artifactDir = Join-Path $env:GITHUB_WORKSPACE "artifact"
++          $artifactDir = Join-Path $env:GITHUB_WORKSPACE "artifact-community-mod-manager-v0.1-ultimate-slashuur-standalone-us"
+           New-Item -ItemType Directory -Force -Path $artifactDir | Out-Null
+-          $artifactExe = Join-Path $artifactDir "TMNT2_Playable_Slashuur_Diagnostics_US.exe"
+-          $artifactPdb = Join-Path $artifactDir "TMNT2.pdb"
+-          $artifactMap = Join-Path $artifactDir "TMNT2.map"
++          $artifactExe = Join-Path $artifactDir "TMNT2_Ultimate_Slashuur_Standalone_US.exe"
++          $artifactPdb = Join-Path $artifactDir "TMNT2_Ultimate_Slashuur_Standalone_US.pdb"
++          $artifactMap = Join-Path $artifactDir "TMNT2_Ultimate_Slashuur_Standalone_US.map"
+           Copy-Item $exe.FullName $artifactExe -Force
+           Copy-Item $pdb.FullName $artifactPdb -Force
+           Copy-Item $map.FullName $artifactMap -Force
+-          Copy-Item (Join-Path $env:GITHUB_WORKSPACE "SLASHUUR_CRASH_REPORTING.md") $artifactDir -Force
++          Copy-Item (Join-Path $env:GITHUB_WORKSPACE "ULTIMATE_SLASHUUR_STANDALONE_US.md") $artifactDir -Force
+ 
+           $hash = (Get-FileHash $artifactExe -Algorithm SHA256).Hash.ToLowerInvariant()
+           $pdbHash = (Get-FileHash $artifactPdb -Algorithm SHA256).Hash.ToLowerInvariant()
+@@ -177,6 +209,7 @@ jobs:
+           $commit = git rev-parse HEAD
+ 
+           @(
++            "Project=community-mod-manager-v0.1/Ultimate_Slashuur",
+             "Build=US/NA x86 Release",
+             "SourceCommit=$commit",
+             "Executable=$([System.IO.Path]::GetFileName($artifactExe))",
+@@ -185,15 +218,17 @@ jobs:
+             "PDB=$([System.IO.Path]::GetFileName($artifactPdb))",
+             "PDBSHA256=$pdbHash",
+             "MAP=$([System.IO.Path]::GetFileName($artifactMap))",
+-            "MAPSHA256=$mapHash"
+-          ) | Set-Content (Join-Path $artifactDir "BUILD_INFO.txt") -Encoding utf8
++            "MAPSHA256=$mapHash",
++            "Included=PlayableSlashuur;FiveBossMoves;FinalControls;DirectBone3Fix;BufferedCrashLogging;AnimationPool512;AdaptiveTeleportV2Radius25NoFlying",
++            "Excluded=MSAA;IntroSkip;Widescreen;DifficultyMods;AnisotropicFiltering;ColdBreath;DeveloperMenuBoot"
++          ) | Set-Content (Join-Path $artifactDir "BUILD_INFO_TMNT2_Ultimate_Slashuur_Standalone_US.txt") -Encoding utf8
+ 
+-          Get-Content (Join-Path $artifactDir "BUILD_INFO.txt")
++          Get-Content (Join-Path $artifactDir "BUILD_INFO_TMNT2_Ultimate_Slashuur_Standalone_US.txt")
+ 
+-      - name: Upload patched executable
++      - name: Upload Ultimate_Slashuur standalone artifact
+         uses: actions/upload-artifact@v4
+         with:
+-          name: TMNT2-Playable-Slashuur-Diagnostics-US
+-          path: artifact/*
++          name: TMNT2-Ultimate-Slashuur-Standalone-US-run-${{ github.run_number }}
++          path: artifact-community-mod-manager-v0.1-ultimate-slashuur-standalone-us/*
+           if-no-files-found: error
+-          retention-days: 7
++          retention-days: 14
+diff --git a/ULTIMATE_SLASHUUR_STANDALONE_US.md b/ULTIMATE_SLASHUUR_STANDALONE_US.md
+new file mode 100644
+index 0000000..8226935
+--- /dev/null
++++ b/ULTIMATE_SLASHUUR_STANDALONE_US.md
+@@ -0,0 +1,28 @@
++# Ultimate_Slashuur standalone US build
++
++This branch exists only to generate the EXE delta used by
++`community-mod-manager-v0.1` package `Ultimate_Slashuur`.
++
++## Included
++
++- Playable Slashuur and all five confirmed boss moves.
++- Final Guard-based controls.
++- Direct bone ID 3 fix for purple-ball and ground-blast stability.
++- Buffered crash/runtime logging.
++- Nexus/Home Station animation pool capacity of 512.
++- Adaptive Teleport v2, radius 25, rear offset 1, collision and height
++  correction, original forward fallback, handle revalidation, attack cancel
++  rules, and the eight confirmed flying-archetype exclusions.
++
++## Deliberately excluded
++
++- MSAA.
++- Intro Skip.
++- Widescreen changes.
++- Very Hard, Extreme, or Souls Like difficulty changes.
++- Anisotropic filtering.
++- Cold breath discovery changes.
++- Developer-menu boot.
++
++The workflow produces uniquely named EXE, PDB, MAP, build-information, and
++artifact outputs. The retail executable is not committed or distributed.

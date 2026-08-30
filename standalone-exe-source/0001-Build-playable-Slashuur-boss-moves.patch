@@ -1,0 +1,920 @@
+From 707abf8c10622c839e59f7473f5a5545bb960f8d Mon Sep 17 00:00:00 2001
+From: Key1aN <109429578+Key1aN@users.noreply.github.com>
+Date: Wed, 26 Aug 2026 22:09:06 +0330
+Subject: [PATCH 01/11] Build playable Slashuur boss moves
+
+---
+ .github/workflows/build-playable-slashuur.yml | 112 ++++
+ src/Game/Component/Effect/Magic.cpp           |  19 +-
+ .../ManipulatorSlashuur.cpp                   |  55 +-
+ .../ManipulatorSlashuur.hpp                   |   8 +-
+ .../ConcretePlayerCharacter/Slashuur.cpp      | 515 +++++++++++++++++-
+ .../ConcretePlayerCharacter/Slashuur.hpp      |  90 ++-
+ 6 files changed, 793 insertions(+), 6 deletions(-)
+ create mode 100644 .github/workflows/build-playable-slashuur.yml
+
+diff --git a/.github/workflows/build-playable-slashuur.yml b/.github/workflows/build-playable-slashuur.yml
+new file mode 100644
+index 0000000..1c5962a
+--- /dev/null
++++ b/.github/workflows/build-playable-slashuur.yml
+@@ -0,0 +1,112 @@
++name: Build playable Slashuur boss moves
++
++on:
++  workflow_dispatch:
++  push:
++    branches:
++      - "master"
++      - "codex/playable-slashuur-boss-moves"
++
++permissions:
++  contents: read
++
++jobs:
++  build-windows-x86-us:
++    runs-on: windows-2022
++    timeout-minutes: 30
++
++    steps:
++      - name: Check out patched source
++        uses: actions/checkout@v4
++
++      - name: Stage DirectX headers and x86 libraries
++        shell: pwsh
++        run: |
++          $ErrorActionPreference = "Stop"
++
++          $kitsRoot = "${env:ProgramFiles(x86)}\Windows Kits\10"
++          if (-not (Test-Path $kitsRoot)) {
++            throw "Windows 10 SDK was not found at $kitsRoot"
++          }
++
++          $includeVersion = Get-ChildItem "$kitsRoot\Include" -Directory |
++            Where-Object { Test-Path "$($_.FullName)\um\d3d9.h" } |
++            Sort-Object Name -Descending |
++            Select-Object -First 1
++
++          $libraryVersion = Get-ChildItem "$kitsRoot\Lib" -Directory |
++            Where-Object { Test-Path "$($_.FullName)\um\x86\d3d9.lib" } |
++            Sort-Object Name -Descending |
++            Select-Object -First 1
++
++          if (-not $includeVersion -or -not $libraryVersion) {
++            throw "A Windows SDK containing Direct3D 9 x86 files was not found."
++          }
++
++          $dxsdk = Join-Path $env:RUNNER_TEMP "tmnt2-dxsdk"
++          $includeOut = Join-Path $dxsdk "Include"
++          $libOut = Join-Path $dxsdk "Lib\x86"
++          New-Item -ItemType Directory -Force -Path $includeOut, $libOut | Out-Null
++
++          Copy-Item "$($includeVersion.FullName)\um\*" $includeOut -Recurse -Force
++          Copy-Item "$($includeVersion.FullName)\shared\*" $includeOut -Recurse -Force
++
++          foreach ($library in @("d3d9.lib", "dinput8.lib", "dxguid.lib", "dsound.lib")) {
++            $source = Join-Path $libraryVersion.FullName "um\x86\$library"
++            if (-not (Test-Path $source)) {
++              throw "Required DirectX library was not found: $source"
++            }
++            Copy-Item $source $libOut -Force
++          }
++
++          "DXSDK_DIR=$dxsdk" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
++          Write-Host "DXSDK_DIR=$dxsdk"
++          Write-Host "Windows SDK include version: $($includeVersion.Name)"
++          Write-Host "Windows SDK library version: $($libraryVersion.Name)"
++
++      - name: Configure US Win32 Release build
++        shell: pwsh
++        run: cmake --preset vs2022 -DOPT_EU_BUILD=OFF
++
++      - name: Build patched executable
++        shell: pwsh
++        run: cmake --build --preset vs2022-release --parallel
++
++      - name: Collect and verify executable
++        shell: pwsh
++        run: |
++          $ErrorActionPreference = "Stop"
++          $exe = Get-ChildItem "$env:GITHUB_WORKSPACE\bin\win" -Recurse -File -Filter "TMNT2.exe" |
++            Where-Object { $_.FullName -match "\\release\\" } |
++            Select-Object -First 1
++
++          if (-not $exe) {
++            throw "The Release TMNT2.exe output was not found."
++          }
++
++          $artifactDir = Join-Path $env:GITHUB_WORKSPACE "artifact"
++          New-Item -ItemType Directory -Force -Path $artifactDir | Out-Null
++          $artifactExe = Join-Path $artifactDir "TMNT2_Playable_Slashuur_Boss_Moves_US.exe"
++          Copy-Item $exe.FullName $artifactExe -Force
++
++          $hash = (Get-FileHash $artifactExe -Algorithm SHA256).Hash.ToLowerInvariant()
++          $size = (Get-Item $artifactExe).Length
++          $commit = git rev-parse HEAD
++
++          @(
++            "Build=US/NA x86 Release",
++            "SourceCommit=$commit",
++            "Executable=$([System.IO.Path]::GetFileName($artifactExe))",
++            "Size=$size",
++            "SHA256=$hash"
++          ) | Set-Content (Join-Path $artifactDir "BUILD_INFO.txt") -Encoding utf8
++
++          Get-Content (Join-Path $artifactDir "BUILD_INFO.txt")
++
++      - name: Upload patched executable
++        uses: actions/upload-artifact@v4
++        with:
++          name: TMNT2-Playable-Slashuur-Boss-Moves-US
++          path: artifact/*
++          if-no-files-found: error
++          retention-days: 7
+diff --git a/src/Game/Component/Effect/Magic.cpp b/src/Game/Component/Effect/Magic.cpp
+index 9b510e8..6d7f216 100644
+--- a/src/Game/Component/Effect/Magic.cpp
++++ b/src/Game/Component/Effect/Magic.cpp
+@@ -849,6 +849,23 @@ bool CMagic::CheckAttack(void)
+ 		};
+ 
+         MAGICTYPES::FEATURE featureAttack = (m_feature & MAGICTYPES::FEATURE_MASK_ATTACK_TO);
++
++        /*
++         * Slashuur's retail boss projectile is authored to hit players.  The
++         * playable boss-move port reuses the same magic but gives it a player
++         * parent, so retarget only that instance to enemies.  Enemy Slashuur
++         * keeps the original player target.
++         */
++        if ((GetID() == MAGICID::ID_SLABALL) &&
++            (featureAttack == MAGICTYPES::FEATURE_ATTACK_TO_PLAYER) &&
++            m_pParent &&
++            (m_pParent->GetType() == GAMEOBJECTTYPE::CHARACTER))
++        {
++            CCharacter* pParentCharacter = static_cast<CCharacter*>(m_pParent);
++            if (pParentCharacter->GetCharacterType() == CCharacter::TYPE_PLAYER)
++                featureAttack = MAGICTYPES::FEATURE_ATTACK_TO_ENEMY;
++        };
++
+         switch (featureAttack)
+         {
+         case MAGICTYPES::FEATURE_ATTACK_TO_PLAYER:
+@@ -1175,4 +1192,4 @@ void CMagic::AddFeature(MAGICTYPES::FEATURE feature)
+ bool CMagic::CheckFeature(MAGICTYPES::FEATURE feature) const
+ {
+     return ((m_feature & feature) != 0);
+-};
+\ No newline at end of file
++};
+diff --git a/src/Game/Component/Player/ConcreteManipulator/ManipulatorSlashuur.cpp b/src/Game/Component/Player/ConcreteManipulator/ManipulatorSlashuur.cpp
+index c23b8bd..8c0aa9f 100644
+--- a/src/Game/Component/Player/ConcreteManipulator/ManipulatorSlashuur.cpp
++++ b/src/Game/Component/Player/ConcreteManipulator/ManipulatorSlashuur.cpp
+@@ -1,5 +1,8 @@
+ #include "ManipulatorSlashuur.hpp"
+ 
++#include "Game/Component/Player/ConcretePlayerCharacter/Slashuur.hpp"
++#include "Game/Component/Player/PlayerCharacter.hpp"
++
+ 
+ CSlashuurManipulator::CSlashuurManipulator(CPlayerCharacter* pPlayerChr, int32 nControllerNo)
+ : CManipulator("sla_mp", pPlayerChr, nControllerNo)
+@@ -11,4 +14,54 @@ CSlashuurManipulator::CSlashuurManipulator(CPlayerCharacter* pPlayerChr, int32 n
+ CSlashuurManipulator::~CSlashuurManipulator(void)
+ {
+     ;
+-};
+\ No newline at end of file
++};
++
++
++void CSlashuurManipulator::RunGrounding(void)
++{
++    if (!RunBossMoveChord())
++        CManipulator::RunGrounding();
++};
++
++
++void CSlashuurManipulator::RunGuardReady(void)
++{
++    if (!RunBossMoveChord())
++        CManipulator::RunGuardReady();
++};
++
++
++void CSlashuurManipulator::RunGuard(void)
++{
++    if (!RunBossMoveChord())
++        CManipulator::RunGuard();
++};
++
++
++bool CSlashuurManipulator::RunBossMoveChord(void)
++{
++    if (m_input.m_guard != GUARD_ON)
++        return false;
++
++    Slashuur::STATUS status = Slashuur::STATUS_BOSS_MAX;
++
++    if (m_input.m_attack == ATTACK_A)
++        status = Slashuur::STATUS_BOSS_TELEPORT;
++    else if ((m_input.m_attack == ATTACK_B) || (m_input.m_attack == ATTACK_C))
++        status = Slashuur::STATUS_BOSS_SCYTHE;
++    else if (m_input.m_jump == JUMP_ON)
++        status = Slashuur::STATUS_BOSS_GROUND_BLAST;
++    else if (m_input.m_knife == KNIFE_ON)
++        status = Slashuur::STATUS_BOSS_SHOT;
++    else if (m_input.m_dash == DASH_ON)
++        status = Slashuur::STATUS_BOSS_DRAIN;
++
++    if (status == Slashuur::STATUS_BOSS_MAX)
++        return false;
++
++    if (m_input.m_move)
++        m_pPlayerChr->SetDirection(m_input.m_fDirection);
++
++    m_pPlayerChr->ChangeStatus(static_cast<PLAYERTYPES::STATUS>(status));
++    return true;
++};
+diff --git a/src/Game/Component/Player/ConcreteManipulator/ManipulatorSlashuur.hpp b/src/Game/Component/Player/ConcreteManipulator/ManipulatorSlashuur.hpp
+index 6878457..bc5834e 100644
+--- a/src/Game/Component/Player/ConcreteManipulator/ManipulatorSlashuur.hpp
++++ b/src/Game/Component/Player/ConcreteManipulator/ManipulatorSlashuur.hpp
+@@ -8,4 +8,10 @@ class CSlashuurManipulator : public CManipulator
+ public:
+     CSlashuurManipulator(CPlayerCharacter* pPlayerChr, int32 nControllerNo);
+     virtual ~CSlashuurManipulator(void);
+-};
+\ No newline at end of file
++    virtual void RunGrounding(void) override;
++    virtual void RunGuardReady(void) override;
++    virtual void RunGuard(void) override;
++
++private:
++    bool RunBossMoveChord(void);
++};
+diff --git a/src/Game/Component/Player/ConcretePlayerCharacter/Slashuur.cpp b/src/Game/Component/Player/ConcretePlayerCharacter/Slashuur.cpp
+index 40734ad..4a48f69 100644
+--- a/src/Game/Component/Player/ConcretePlayerCharacter/Slashuur.cpp
++++ b/src/Game/Component/Player/ConcretePlayerCharacter/Slashuur.cpp
+@@ -2,6 +2,11 @@
+ 
+ #include "Game/Component/GameMain/GameProperty.hpp"
+ #include "Game/Component/GameMain/GamePlayer.hpp"
++#include "Game/Component/Enemy/Enemy.hpp"
++#include "Game/Component/Enemy/EnemyCharacter.hpp"
++#include "Game/Component/Effect/EffectManager.hpp"
++#include "Game/Component/Effect/MagicManager.hpp"
++#include "Game/Component/Effect/MagicTypes.hpp"
+ #include "Game/Component/Player/PlayerStateMachine.hpp"
+ #include "Game/Component/Player/PlayerStatus.hpp"
+ #include "Game/Component/Gimmick/GimmickManager.hpp"
+@@ -10,11 +15,512 @@
+ #include "Game/Component/Module/CircleShadowModule.hpp"
+ #include "Game/Component/Module/BandanaModule.hpp"
+ #include "Game/System/Model/Model.hpp"
++#include "Game/System/Hit/HitAttackData.hpp"
++#include "Game/System/Hit/HitAttackManager.hpp"
++#include "Game/System/Map/WorldMap.hpp"
+ #include "Game/System/Sound/GameSound.hpp"
+ 
+ 
+ namespace Slashuur
+ {
++    static const float BOSS_GROUND_BLAST_JUMP_SPEED = 10.606602f;
++    static const float BOSS_SCYTHE_RADIUS = 3.2f;
++    static const int32 BOSS_DRAIN_DAMAGE = 30;
++
++
++    static PLAYERTYPES::STATUS BossStatus(STATUS status)
++    {
++        return static_cast<PLAYERTYPES::STATUS>(status);
++    };
++
++
++    static void PlayScaledEffect(EFFECTID::VALUE idEffect, const RwV3d& position, float scale)
++    {
++        uint32 hEffect = CEffectManager::Play(idEffect, &position);
++        if (hEffect)
++            CEffectManager::SetScale(hEffect, scale);
++    };
++
++
++    static void RegistEnemySphereAttack(CPlayerCharacter& character,
++                                        const RwV3d& position,
++                                        float radius,
++                                        int32 power,
++                                        CHitAttackData::STATUS status)
++    {
++        RwSphere hitSphere;
++        hitSphere.center = position;
++        hitSphere.radius = radius;
++
++        CHitAttackData attack;
++        attack.SetObject(character.GetHandle());
++        attack.SetObjectPos(&position);
++        attack.SetTarget(CHitAttackData::TARGET_ENEMY);
++        attack.SetAntiguard(CHitAttackData::ANTIGUARD_INVALID);
++        attack.SetStatus(status);
++        attack.SetPower(power);
++        attack.SetShape(CHitAttackData::SHAPE_SPHERE);
++        attack.SetSphere(&hitSphere);
++
++        CHitAttackManager::RegistAttack(&attack);
++    };
++
++
++    static void TeleportForward(CPlayerCharacter& character)
++    {
++        RwV3d position = Math::VECTOR3_ZERO;
++        character.GetFootPosition(&position);
++
++        RwV3d offset = { 0.0f, 0.0f, 5.0f };
++        character.RotateVectorByDirection(&offset, &offset);
++
++        RwV3d destination = Math::VECTOR3_ZERO;
++        Math::Vec3_Add(&destination, &position, &offset);
++
++        RwV3d lineStart = position;
++        RwV3d lineEnd = destination;
++        lineStart.y += 1.0f;
++        lineEnd.y += 1.0f;
++
++        if (CWorldMap::CheckCollisionLine(&lineStart, &lineEnd))
++        {
++            const CWorldMap::COLLISIONRESULT* pResult = CWorldMap::GetCollisionResult();
++            if (pResult)
++                destination = pResult->m_vClosestPt;
++        };
++
++        destination.y = CWorldMap::GetMapHeight(&destination);
++        character.SetPosition(&destination);
++    };
++
++
++    static uint32 SpawnPurpleBall(CPlayerCharacter& character, bool bDownward)
++    {
++        RwV3d position = Math::VECTOR3_ZERO;
++        character.GetPosition(&position);
++
++        RwV3d offset = Math::VECTOR3_ZERO;
++        character.GetOffsetPosition(&offset, 1);
++        Math::Vec3_Add(&position, &position, &offset);
++
++        RwV3d direction = { 0.0f, -1.0f, 0.0f };
++        if (!bDownward)
++        {
++            direction = { 0.0f, 0.0f, 1.0f };
++            character.RotateVectorByDirection(&direction, &direction);
++        };
++
++        CMagicManager::CParameter parameter;
++        parameter.SetObject(&character);
++        parameter.SetPositon(&position);
++        parameter.SetDirection(&direction);
++
++        uint32 hMagic = CMagicManager::Play(MAGICID::ID_SLABALL, &parameter);
++        if (hMagic && bDownward)
++        {
++            CMagicManager::SetScale(hMagic, 1.73f);
++            CMagicManager::SetSpeed(hMagic, 50.0f);
++        };
++
++        CGameSound::PlayObjectSE(&character, SDCODE_SE(4401));
++        return hMagic;
++    };
++
++
++    static int32 DrainNearbyEnemies(CPlayerCharacter& character)
++    {
++        RwV3d playerPosition = Math::VECTOR3_ZERO;
++        character.GetBodyPosition(&playerPosition);
++
++        int32 drained = 0;
++        const float radiusSq = 8.0f * 8.0f;
++        int32 enemyMax = CGameProperty::GetEnemyMax();
++        for (int32 i = 0; i < enemyMax; ++i)
++        {
++            CEnemy* pEnemy = CGameProperty::GetEnemy(i);
++            if (!pEnemy || (pEnemy->GetHP() <= 0))
++                continue;
++
++            CEnemyCharacter& enemyCharacter = pEnemy->Character();
++
++            RwV3d enemyPosition = Math::VECTOR3_ZERO;
++            enemyCharacter.GetBodyPosition(&enemyPosition);
++
++            RwV3d distance = Math::VECTOR3_ZERO;
++            Math::Vec3_Sub(&distance, &enemyPosition, &playerPosition);
++            if (Math::Vec3_Dot(&distance, &distance) > radiusSq)
++                continue;
++
++            enemyCharacter.OnMessageReceivedDamage(BOSS_DRAIN_DAMAGE);
++            PlayScaledEffect(EFFECTID::ID_HPSTEAL_LIGHT, enemyPosition, 1.0f);
++            ++drained;
++
++            if (drained >= 3)
++                break;
++        };
++
++        if (drained > 0)
++        {
++            character.OnMessageReceivedDamage(-(BOSS_DRAIN_DAMAGE * drained));
++            PlayScaledEffect(EFFECTID::ID_HPSTEAL_LIGHT, playerPosition, 1.5f);
++        };
++
++        return drained;
++    };
++
++
++    bool CBossMoveStatus::IsEnableChangeStatus(PLAYERTYPES::STATUS status)
++    {
++        PLAYERTYPES::STATUS aStatusArray[] =
++        {
++            PLAYERTYPES::STATUS_IDLE,
++            PLAYERTYPES::STATUS_WALK,
++            PLAYERTYPES::STATUS_RUN,
++            PLAYERTYPES::STATUS_GUARD_READY,
++            PLAYERTYPES::STATUS_GUARD,
++        };
++
++        return IsWithinStatusFromArray(status, aStatusArray, COUNT_OF(aStatusArray));
++    };
++
++
++    void CBossTeleport::OnAttach(void)
++    {
++        m_step = 0;
++
++        Character().SetAttribute(PLAYERTYPES::ATTRIBUTE_INVINCIBILITY);
++        Character().ResetVelocity();
++        Character().ResetAcceleration();
++        Character().ChangeMotion(PLAYERTYPES::MOTIONNAMES::IDLE, true);
++
++        RwV3d position = Math::VECTOR3_ZERO;
++        Character().GetFootPosition(&position);
++        PlayScaledEffect(EFFECTID::ID_WARP_START, position, 1.5f);
++        CGameSound::PlayObjectSE(m_pPlayerChr, SDCODE_SE(4396));
++    };
++
++
++    void CBossTeleport::OnDetach(void)
++    {
++        Character().GetModel()->SetDrawEnable(true);
++        Character().SetEnableBodyHit(true);
++        Character().SetEnableCatchHit(true);
++        Character().SetEnableBodyHitSelfToOther(true);
++        Character().ClearAttribute(PLAYERTYPES::ATTRIBUTE_INVINCIBILITY);
++    };
++
++
++    void CBossTeleport::OnRun(void)
++    {
++        float duration = StateMachine().GetStatusDuration();
++        switch (m_step)
++        {
++        case 0:
++            if (duration >= 0.18f)
++            {
++                Character().GetModel()->SetDrawEnable(false);
++                Character().SetEnableBodyHit(false);
++                Character().SetEnableCatchHit(false);
++                Character().SetEnableBodyHitSelfToOther(false);
++                ++m_step;
++            };
++            break;
++
++        case 1:
++            if (duration >= 0.36f)
++            {
++                TeleportForward(Character());
++
++                RwV3d position = Math::VECTOR3_ZERO;
++                Character().GetFootPosition(&position);
++                PlayScaledEffect(EFFECTID::ID_WARP_OUT, position, 1.5f);
++
++                Character().GetModel()->SetDrawEnable(true);
++                Character().SetEnableBodyHit(true);
++                Character().SetEnableCatchHit(true);
++                Character().SetEnableBodyHitSelfToOther(true);
++
++                Character().GetBodyPosition(&position);
++                RegistEnemySphereAttack(Character(), position, 2.25f, 15, CHitAttackData::STATUS_KNOCK);
++                CGameSound::PlayObjectSE(m_pPlayerChr, SDCODE_SE(4395));
++                ++m_step;
++            };
++            break;
++
++        case 2:
++            if (duration >= 0.58f)
++                StateMachine().ChangeStatus(PLAYERTYPES::STATUS_IDLE);
++            break;
++
++        default:
++            break;
++        };
++    };
++
++
++    void CBossScythe::OnAttach(void)
++    {
++        m_step = 0;
++        m_fPulseTime = 0.2f;
++
++        Character().SetAttribute(PLAYERTYPES::ATTRIBUTE_INVINCIBILITY);
++        Character().ResetVelocity();
++        Character().ResetAcceleration();
++        Character().ChangeMotion(MOTIONNAMES::SCYTHE_LOOP, true);
++
++        RwV3d position = Math::VECTOR3_ZERO;
++        Character().GetFootPosition(&position);
++        PlayScaledEffect(EFFECTID::ID_WARP_OUT, position, 1.25f);
++        CGameSound::PlayObjectSE(m_pPlayerChr, SDCODE_SE(4403));
++    };
++
++
++    void CBossScythe::OnDetach(void)
++    {
++        Character().ClearAttribute(PLAYERTYPES::ATTRIBUTE_INVINCIBILITY);
++        CGameSound::FadeOutSE(SDCODE_SE(4403), CGameSound::FADESPEED_NORMAL);
++    };
++
++
++    void CBossScythe::OnRun(void)
++    {
++        if (m_step == 0)
++        {
++            m_fPulseTime += CGameProperty::GetElapsedTime();
++            if (m_fPulseTime >= 0.45f)
++            {
++                m_fPulseTime = 0.0f;
++
++                RwV3d center = Math::VECTOR3_ZERO;
++                Character().GetBodyPosition(&center);
++                RegistEnemySphereAttack(Character(), center, BOSS_SCYTHE_RADIUS, 10, CHitAttackData::STATUS_FLYAWAY);
++
++                for (int32 i = 0; i < 4; ++i)
++                {
++                    float angle = (MATH_PI2 * static_cast<float>(i)) / 4.0f;
++                    RwV3d position = center;
++                    position.x += std::sin(angle) * BOSS_SCYTHE_RADIUS;
++                    position.z += std::cos(angle) * BOSS_SCYTHE_RADIUS;
++                    PlayScaledEffect(EFFECTID::ID_SICKLE_WARP, position, 0.8f);
++                };
++            };
++
++            if (StateMachine().GetStatusDuration() >= 2.0f)
++            {
++                Character().ChangeMotion(MOTIONNAMES::SCYTHE_END, true);
++                ++m_step;
++            };
++        }
++        else if (Character().IsMotionEnd())
++        {
++            StateMachine().ChangeStatus(PLAYERTYPES::STATUS_IDLE);
++        };
++    };
++
++
++    void CBossGroundBlast::OnAttach(void)
++    {
++        m_step = 0;
++        m_bShot = false;
++
++        Character().SetAttribute(PLAYERTYPES::ATTRIBUTE_INVINCIBILITY);
++        Character().ResetVelocity();
++        Character().ResetAcceleration();
++        Character().SetCharacterFlag(CHARACTERTYPES::FLAG_FIXED_MODEL_ROTATION);
++        Character().ChangeMotion(MOTIONNAMES::GROUND_BLAST_START, true);
++        CGameSound::PlayAttackSE(m_pPlayerChr);
++    };
++
++
++    void CBossGroundBlast::OnDetach(void)
++    {
++        Character().ClearAttribute(PLAYERTYPES::ATTRIBUTE_INVINCIBILITY);
++        Character().ClearPlayerFlag(PLAYERTYPES::FLAG_AERIAL_STATUS);
++        Character().ClearCharacterFlag(CHARACTERTYPES::FLAG_FIXED_MODEL_ROTATION |
++                                       CHARACTERTYPES::FLAG_CLAMP_VELOCITY_XZ);
++    };
++
++
++    void CBossGroundBlast::OnRun(void)
++    {
++        switch (m_step)
++        {
++        case 0:
++            if (Character().IsMotionEnd())
++            {
++                Character().ChangeMotion(MOTIONNAMES::GROUND_BLAST_JUMP, true);
++
++                RwV3d velocity = Math::VECTOR3_ZERO;
++                velocity.y = BOSS_GROUND_BLAST_JUMP_SPEED;
++                Character().SetVelocity(&velocity);
++                Character().SetPlayerFlag(PLAYERTYPES::FLAG_AERIAL_STATUS);
++                Character().SetCharacterFlag(CHARACTERTYPES::FLAG_CLAMP_VELOCITY_XZ);
++                ++m_step;
++            };
++            break;
++
++        case 1:
++            {
++                RwV3d velocity = Math::VECTOR3_ZERO;
++                Character().GetVelocity(&velocity);
++                if (velocity.y <= 0.0f)
++                {
++                    Character().ChangeMotion(MOTIONNAMES::GROUND_BLAST_FIRE, true);
++                    SpawnPurpleBall(Character(), true);
++                    m_bShot = true;
++                    ++m_step;
++                };
++            }
++            break;
++
++        case 2:
++            if (m_bShot)
++            {
++                RwV3d footPosition = Math::VECTOR3_ZERO;
++                Character().GetFootPosition(&footPosition);
++
++                RwV3d velocity = Math::VECTOR3_ZERO;
++                Character().GetVelocity(&velocity);
++
++                float mapHeight = CWorldMap::GetMapHeight(&footPosition);
++                if ((std::fabs(footPosition.y - mapHeight) <= 0.25f) &&
++                    (std::fabs(velocity.y) <= 0.01f))
++                {
++                    Character().ResetVelocity();
++                    Character().ResetAcceleration();
++                    Character().ClearPlayerFlag(PLAYERTYPES::FLAG_AERIAL_STATUS);
++                    Character().ChangeMotion(MOTIONNAMES::GROUND_BLAST_END, true);
++                    ++m_step;
++                };
++            };
++            break;
++
++        case 3:
++            if (Character().IsMotionEnd())
++                StateMachine().ChangeStatus(PLAYERTYPES::STATUS_IDLE);
++            break;
++
++        default:
++            break;
++        };
++    };
++
++
++    void CBossShot::OnAttach(void)
++    {
++        m_bShot = false;
++
++        Character().ResetVelocity();
++        Character().ResetAcceleration();
++        Character().ChangeMotion(PLAYERTYPES::MOTIONNAMES::ATTACK_KNIFE, true);
++        CGameSound::PlayAttackSE(m_pPlayerChr);
++    };
++
++
++    void CBossShot::OnDetach(void)
++    {
++        ;
++    };
++
++
++    void CBossShot::OnRun(void)
++    {
++        if (!m_bShot && Character().TestCharacterFlag(CHARACTERTYPES::FLAG_OCCURED_TIMING))
++        {
++            SpawnPurpleBall(Character(), false);
++            m_bShot = true;
++        };
++
++        if (Character().IsMotionEnd())
++            StateMachine().ChangeStatus(PLAYERTYPES::STATUS_IDLE);
++    };
++
++
++    void CBossDrain::OnAttach(void)
++    {
++        m_step = 0;
++        m_hEffect = 0;
++        m_bDrained = false;
++
++        Character().SetAttribute(PLAYERTYPES::ATTRIBUTE_INVINCIBILITY);
++        Character().ResetVelocity();
++        Character().ResetAcceleration();
++        Character().ChangeMotion(MOTIONNAMES::DRAIN_START, true);
++        CGameSound::PlayObjectSE(m_pPlayerChr, SDCODE_SE(4402));
++    };
++
++
++    void CBossDrain::OnDetach(void)
++    {
++        Character().ClearAttribute(PLAYERTYPES::ATTRIBUTE_INVINCIBILITY);
++        if (m_hEffect)
++        {
++            CEffectManager::Finish(m_hEffect);
++            m_hEffect = 0;
++        };
++
++        CGameSound::FadeOutSE(SDCODE_SE(4402), CGameSound::FADESPEED_NORMAL);
++    };
++
++
++    void CBossDrain::OnRun(void)
++    {
++        switch (m_step)
++        {
++        case 0:
++            if (Character().TestCharacterFlag(CHARACTERTYPES::FLAG_OCCURED_TIMING))
++            {
++                RwV3d position = Math::VECTOR3_ZERO;
++                Character().GetFootPosition(&position);
++                position.y += 0.1f;
++                m_hEffect = CEffectManager::Play(EFFECTID::ID_SLA_SHADOW, &position);
++                if (m_hEffect)
++                    CEffectManager::SetScale(m_hEffect, 1.25f);
++                ++m_step;
++            };
++            break;
++
++        case 1:
++            if (Character().IsMotionEnd())
++            {
++                Character().ChangeMotion(MOTIONNAMES::DRAIN_START2, true);
++                ++m_step;
++            };
++            break;
++
++        case 2:
++            if (!m_bDrained && Character().TestCharacterFlag(CHARACTERTYPES::FLAG_OCCURED_TIMING))
++            {
++                DrainNearbyEnemies(Character());
++                m_bDrained = true;
++            };
++
++            if (Character().IsMotionEnd())
++            {
++                Character().ChangeMotion(MOTIONNAMES::DRAIN_LOOP, true);
++                ++m_step;
++            };
++            break;
++
++        case 3:
++            if (StateMachine().GetStatusDuration() >= 3.0f)
++            {
++                Character().ChangeMotion(MOTIONNAMES::DRAIN_END, true);
++                ++m_step;
++            };
++            break;
++
++        case 4:
++            if (Character().IsMotionEnd())
++                StateMachine().ChangeStatus(PLAYERTYPES::STATUS_IDLE);
++            break;
++
++        default:
++            break;
++        };
++    };
++
++
+     DEFINE_ENABLED_STATUS_FOR(CAttackJump, { PLAYERTYPES::STATUS_JUMP,
+                                              PLAYERTYPES::STATUS_JUMP_2ND,
+                                              PLAYERTYPES::STATUS_JUMP_WALL,
+@@ -111,13 +617,18 @@ CSlashuur::CSlashuur(GAMETYPES::COSTUME costume)
+     parameter.m_feature.m_fAerialAcceleration   = 12.0f;
+     parameter.m_feature.m_nKnifeAttachBoneID    = 4;
+     
+-    parameter.m_pStateMachine = new CPlayerStateMachine(this, PLAYERTYPES::STATUS::NORMALMAX);
++    parameter.m_pStateMachine = new CPlayerStateMachine(this, Slashuur::STATUS_BOSS_MAX);
+ 
+     CStatus::RegistDefaultForStateMachine(*parameter.m_pStateMachine);
+ 
+     parameter.m_pStateMachine->RegistStatus(PLAYERTYPES::STATUS_ATTACK_JUMP,    new Slashuur::CAttackJump);
+     parameter.m_pStateMachine->RegistStatus(PLAYERTYPES::STATUS_ATTACK_AABBC,   new Slashuur::CAttackAABBC);
+     parameter.m_pStateMachine->RegistStatus(PLAYERTYPES::STATUS_ATTACK_B,       new Slashuur::CAttackB);
++    parameter.m_pStateMachine->RegistStatus(Slashuur::BossStatus(Slashuur::STATUS_BOSS_TELEPORT),    new Slashuur::CBossTeleport);
++    parameter.m_pStateMachine->RegistStatus(Slashuur::BossStatus(Slashuur::STATUS_BOSS_SCYTHE),      new Slashuur::CBossScythe);
++    parameter.m_pStateMachine->RegistStatus(Slashuur::BossStatus(Slashuur::STATUS_BOSS_GROUND_BLAST),new Slashuur::CBossGroundBlast);
++    parameter.m_pStateMachine->RegistStatus(Slashuur::BossStatus(Slashuur::STATUS_BOSS_SHOT),        new Slashuur::CBossShot);
++    parameter.m_pStateMachine->RegistStatus(Slashuur::BossStatus(Slashuur::STATUS_BOSS_DRAIN),       new Slashuur::CBossDrain);
+ 
+     Initialize(&parameter);
+ 
+@@ -134,4 +645,4 @@ CSlashuur::CSlashuur(GAMETYPES::COSTUME costume)
+ CSlashuur::~CSlashuur(void)
+ {
+     ;
+-};
+\ No newline at end of file
++};
+diff --git a/src/Game/Component/Player/ConcretePlayerCharacter/Slashuur.hpp b/src/Game/Component/Player/ConcretePlayerCharacter/Slashuur.hpp
+index e3e3b66..e4d78d6 100644
+--- a/src/Game/Component/Player/ConcretePlayerCharacter/Slashuur.hpp
++++ b/src/Game/Component/Player/ConcretePlayerCharacter/Slashuur.hpp
+@@ -11,9 +11,97 @@ namespace Slashuur
+     const RwV3d CHARGE_ATTACK_LOCAL_POSITION    = { 0.0f, 0.0f, 1.0f };
+     const RwV3d BANDANA_OFFSET                  = { -0.02f, 0.237f, -0.038f };
+ 
++    enum STATUS
++    {
++        STATUS_BOSS_TELEPORT = PLAYERTYPES::NORMALMAX,
++        STATUS_BOSS_SCYTHE,
++        STATUS_BOSS_GROUND_BLAST,
++        STATUS_BOSS_SHOT,
++        STATUS_BOSS_DRAIN,
++        STATUS_BOSS_MAX,
++    };
++
+     namespace MOTIONNAMES
+     {
+         static const char* ATTACK_JUMP = "JAttack";
++
++        static const char* DRAIN_START        = "C1";
++        static const char* DRAIN_START2       = "C2";
++        static const char* DRAIN_LOOP         = "C3";
++        static const char* DRAIN_END          = "C4";
++
++        static const char* GROUND_BLAST_START = "D1";
++        static const char* GROUND_BLAST_JUMP  = "D2";
++        static const char* GROUND_BLAST_FIRE  = "DAttack";
++        static const char* GROUND_BLAST_END   = "D3";
++
++        static const char* SCYTHE_LOOP        = "E2";
++        static const char* SCYTHE_END         = "E3";
++    };
++
++    class CBossMoveStatus : public CStatus
++    {
++    public:
++        virtual bool IsEnableChangeStatus(PLAYERTYPES::STATUS status) override;
++    };
++
++    class CBossTeleport : public CBossMoveStatus
++    {
++    public:
++        virtual void OnAttach(void) override;
++        virtual void OnDetach(void) override;
++        virtual void OnRun(void) override;
++
++    private:
++        int32 m_step;
++    };
++
++    class CBossScythe : public CBossMoveStatus
++    {
++    public:
++        virtual void OnAttach(void) override;
++        virtual void OnDetach(void) override;
++        virtual void OnRun(void) override;
++
++    private:
++        int32 m_step;
++        float m_fPulseTime;
++    };
++
++    class CBossGroundBlast : public CBossMoveStatus
++    {
++    public:
++        virtual void OnAttach(void) override;
++        virtual void OnDetach(void) override;
++        virtual void OnRun(void) override;
++
++    private:
++        int32 m_step;
++        bool m_bShot;
++    };
++
++    class CBossShot : public CBossMoveStatus
++    {
++    public:
++        virtual void OnAttach(void) override;
++        virtual void OnDetach(void) override;
++        virtual void OnRun(void) override;
++
++    private:
++        bool m_bShot;
++    };
++
++    class CBossDrain : public CBossMoveStatus
++    {
++    public:
++        virtual void OnAttach(void) override;
++        virtual void OnDetach(void) override;
++        virtual void OnRun(void) override;
++
++    private:
++        int32 m_step;
++        uint32 m_hEffect;
++        bool m_bDrained;
+     };
+ 
+     class CAttackJump : public CStatus
+@@ -44,4 +132,4 @@ class CSlashuur : public CPlayerCharacter
+ public:
+     CSlashuur(GAMETYPES::COSTUME costume);
+     virtual ~CSlashuur(void);
+-};
+\ No newline at end of file
++};

@@ -1,0 +1,229 @@
+From bed4d27c674794baf155b18f5975569111fc59e7 Mon Sep 17 00:00:00 2001
+From: Key1aN <109429578+Key1aN@users.noreply.github.com>
+Date: Sun, 30 Aug 2026 16:36:07 +0330
+Subject: [PATCH 08/11] Implement adaptive enemy-targeted Slashuur teleport
+
+---
+ .../ConcretePlayerCharacter/Slashuur.cpp      | 174 +++++++++++++++++-
+ 1 file changed, 173 insertions(+), 1 deletion(-)
+
+diff --git a/src/Game/Component/Player/ConcretePlayerCharacter/Slashuur.cpp b/src/Game/Component/Player/ConcretePlayerCharacter/Slashuur.cpp
+index 098fcc9..919efb9 100644
+--- a/src/Game/Component/Player/ConcretePlayerCharacter/Slashuur.cpp
++++ b/src/Game/Component/Player/ConcretePlayerCharacter/Slashuur.cpp
+@@ -4,6 +4,7 @@
+ #include "Game/Component/GameMain/GamePlayer.hpp"
+ #include "Game/Component/Enemy/Enemy.hpp"
+ #include "Game/Component/Enemy/EnemyCharacter.hpp"
++#include "Game/Component/Enemy/CharacterCompositor.hpp"
+ #include "Game/Component/Effect/EffectManager.hpp"
+ #include "Game/Component/Effect/MagicManager.hpp"
+ #include "Game/Component/Effect/MagicTypes.hpp"
+@@ -17,6 +18,7 @@
+ #include "Game/System/Model/Model.hpp"
+ #include "Game/System/Hit/HitAttackData.hpp"
+ #include "Game/System/Hit/HitAttackManager.hpp"
++#include "Game/System/Map/MapCamera.hpp"
+ #include "Game/System/Map/WorldMap.hpp"
+ #include "Game/System/Sound/GameSound.hpp"
+ 
+@@ -32,6 +34,8 @@ namespace Slashuur
+ {
+     static const float BOSS_GROUND_BLAST_JUMP_SPEED = 10.606602f;
+     static const float BOSS_SCYTHE_RADIUS = 3.2f;
++    static const float BOSS_TELEPORT_TARGET_RADIUS = 10.0f;
++    static const float BOSS_TELEPORT_REAR_OFFSET = 1.0f;
+     static const int32 BOSS_DRAIN_DAMAGE = 30;
+     static const int32 BOSS_MAGIC_BONE_ID = 3;
+ 
+@@ -116,6 +120,160 @@ namespace Slashuur
+ 
+         destination.y = CWorldMap::GetMapHeight(&destination);
+         character.SetPosition(&destination);
++
++        SLASHUUR_TRACE("MOVE teleport relocate mode=forward destination=(%.3f, %.3f, %.3f)",
++                       destination.x,
++                       destination.y,
++                       destination.z);
++    };
++
++
++    static bool IsTeleportTargetActive(CEnemy* pEnemy)
++    {
++        if (!pEnemy || (pEnemy->GetHP() <= 0))
++            return false;
++
++        CEnemyCharacter& enemyCharacter = pEnemy->Character();
++        if (!enemyCharacter.IsRunning())
++            return false;
++
++        CModel* pModel = enemyCharacter.Compositor().GetModel();
++        if (!pModel || !pModel->IsDrawEnable())
++            return false;
++
++        switch (enemyCharacter.GetStatus())
++        {
++        case ENEMYTYPES::STATUS_HIDE:
++        case ENEMYTYPES::STATUS_QUIT:
++        case ENEMYTYPES::STATUS_DEATH:
++        case ENEMYTYPES::STATUS_APPEAR:
++        case ENEMYTYPES::STATUS_RETREAT:
++            return false;
++
++        default:
++            return true;
++        };
++    };
++
++
++    static int32 FindTeleportTarget(CPlayerCharacter& character)
++    {
++        CMapCamera* pMapCamera = CGameProperty::GetMapCamera();
++        if (!pMapCamera)
++        {
++            SLASHUUR_TRACE("MOVE teleport target none reason=no_camera");
++            return -1;
++        };
++
++        RwV3d playerPosition = Math::VECTOR3_ZERO;
++        character.GetFootPosition(&playerPosition);
++        playerPosition.y = 0.0f;
++
++        const float radiusSq =
++            BOSS_TELEPORT_TARGET_RADIUS * BOSS_TELEPORT_TARGET_RADIUS;
++        float nearestDistanceSq = TYPEDEF::FLOAT_MAX;
++        int32 nearestEnemyNo = -1;
++
++        const int32 enemyMax = CGameProperty::GetEnemyMax();
++        for (int32 i = 0; i < enemyMax; ++i)
++        {
++            CEnemy* pEnemy = CGameProperty::GetEnemy(i);
++            if (!IsTeleportTargetActive(pEnemy))
++                continue;
++
++            CEnemyCharacter& enemyCharacter = pEnemy->Character();
++
++            RwV3d enemyBodyPosition = Math::VECTOR3_ZERO;
++            enemyCharacter.GetBodyPosition(&enemyBodyPosition);
++            if (!pMapCamera->IsPosVisible(&enemyBodyPosition))
++                continue;
++
++            RwV3d enemyFootPosition = Math::VECTOR3_ZERO;
++            enemyCharacter.Compositor().GetFootPosition(&enemyFootPosition);
++            enemyFootPosition.y = 0.0f;
++
++            RwV3d distance = Math::VECTOR3_ZERO;
++            Math::Vec3_Sub(&distance, &enemyFootPosition, &playerPosition);
++            const float distanceSq = Math::Vec3_Dot(&distance, &distance);
++            if ((distanceSq > radiusSq) || (distanceSq >= nearestDistanceSq))
++                continue;
++
++            nearestDistanceSq = distanceSq;
++            nearestEnemyNo = i;
++        };
++
++        if (nearestEnemyNo < 0)
++        {
++            SLASHUUR_TRACE("MOVE teleport target none radius=%.3f fallback=forward",
++                           BOSS_TELEPORT_TARGET_RADIUS);
++            return -1;
++        };
++
++        CEnemy* pEnemy = CGameProperty::GetEnemy(nearestEnemyNo);
++        SLASHUUR_TRACE("MOVE teleport target selected enemy=%d handle=0x%08X distance=%.3f radius=%.3f",
++                       nearestEnemyNo,
++                       (pEnemy ? pEnemy->GetHandle() : 0),
++                       std::sqrt(nearestDistanceSq),
++                       BOSS_TELEPORT_TARGET_RADIUS);
++        return nearestEnemyNo;
++    };
++
++
++    static bool TeleportBehindEnemy(CPlayerCharacter& character,
++                                    int32 enemyNo,
++                                    uint32 expectedHandle)
++    {
++        if (enemyNo < 0)
++            return false;
++
++        CEnemy* pEnemy = CGameProperty::GetEnemy(enemyNo);
++        if (!IsTeleportTargetActive(pEnemy) ||
++            (pEnemy->GetHandle() != expectedHandle))
++        {
++            SLASHUUR_TRACE("MOVE teleport target lost enemy=%d expected_handle=0x%08X fallback=forward",
++                           enemyNo,
++                           expectedHandle);
++            return false;
++        };
++
++        CEnemyCharacter& enemyCharacter = pEnemy->Character();
++        const float enemyDirection = enemyCharacter.Compositor().GetDirection();
++
++        RwV3d enemyFootPosition = Math::VECTOR3_ZERO;
++        enemyCharacter.Compositor().GetFootPosition(&enemyFootPosition);
++
++        RwV3d lineStart = enemyFootPosition;
++        lineStart.y += 1.0f;
++
++        RwV3d lineEnd = lineStart;
++        lineEnd.x -= std::sin(enemyDirection) * BOSS_TELEPORT_REAR_OFFSET;
++        lineEnd.z -= std::cos(enemyDirection) * BOSS_TELEPORT_REAR_OFFSET;
++
++        RwV3d destination = lineEnd;
++        bool bWallAdjusted = false;
++        if (CWorldMap::CheckCollisionLine(&lineStart, &lineEnd))
++        {
++            const CWorldMap::COLLISIONRESULT* pResult = CWorldMap::GetCollisionResult();
++            if (pResult)
++            {
++                destination = pResult->m_vClosestPt;
++                bWallAdjusted = true;
++            };
++        };
++
++        destination.y = CWorldMap::GetMapHeight(&destination);
++        character.SetDirection(enemyDirection);
++        character.SetPosition(&destination);
++
++        SLASHUUR_TRACE("MOVE teleport relocate mode=enemy_rear enemy=%d handle=0x%08X wall_adjusted=%d direction=%.3f destination=(%.3f, %.3f, %.3f)",
++                       enemyNo,
++                       pEnemy->GetHandle(),
++                       (bWallAdjusted ? 1 : 0),
++                       enemyDirection,
++                       destination.x,
++                       destination.y,
++                       destination.z);
++        return true;
+     };
+ 
+ 
+@@ -263,6 +421,15 @@ namespace Slashuur
+     {
+         SLASHUUR_TRACE("MOVE teleport attach begin");
+         m_step = 0;
++        m_iTargetEnemyNo = FindTeleportTarget(Character());
++        m_hTargetEnemy = 0;
++
++        if (m_iTargetEnemyNo >= 0)
++        {
++            CEnemy* pEnemy = CGameProperty::GetEnemy(m_iTargetEnemyNo);
++            if (pEnemy)
++                m_hTargetEnemy = pEnemy->GetHandle();
++        };
+ 
+         Character().SetAttribute(PLAYERTYPES::ATTRIBUTE_INVINCIBILITY);
+         Character().ResetVelocity();
+@@ -309,7 +476,12 @@ namespace Slashuur
+             if (duration >= 0.36f)
+             {
+                 SLASHUUR_TRACE("MOVE teleport step=1 relocate");
+-                TeleportForward(Character());
++                if (!TeleportBehindEnemy(Character(),
++                                         m_iTargetEnemyNo,
++                                         m_hTargetEnemy))
++                {
++                    TeleportForward(Character());
++                };
+ 
+                 RwV3d position = Math::VECTOR3_ZERO;
+                 Character().GetFootPosition(&position);

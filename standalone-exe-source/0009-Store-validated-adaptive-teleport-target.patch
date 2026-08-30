@@ -1,0 +1,22 @@
+From 1cb813185ca0dc5461e6e19625d743c9bb01a7ab Mon Sep 17 00:00:00 2001
+From: Key1aN <109429578+Key1aN@users.noreply.github.com>
+Date: Sun, 30 Aug 2026 16:36:08 +0330
+Subject: [PATCH 09/11] Store validated adaptive teleport target
+
+---
+ src/Game/Component/Player/ConcretePlayerCharacter/Slashuur.hpp | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/src/Game/Component/Player/ConcretePlayerCharacter/Slashuur.hpp b/src/Game/Component/Player/ConcretePlayerCharacter/Slashuur.hpp
+index 291039d..f1cce46 100644
+--- a/src/Game/Component/Player/ConcretePlayerCharacter/Slashuur.hpp
++++ b/src/Game/Component/Player/ConcretePlayerCharacter/Slashuur.hpp
+@@ -55,6 +55,8 @@ namespace Slashuur
+ 
+     private:
+         int32 m_step;
++        int32 m_iTargetEnemyNo;
++        uint32 m_hTargetEnemy;
+     };
+ 
+     class CBossScythe : public CBossMoveStatus

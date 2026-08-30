@@ -1,0 +1,145 @@
+From 3e523a16c83265226f681367991ebbe32886317d Mon Sep 17 00:00:00 2001
+From: Key1aN <109429578+Key1aN@users.noreply.github.com>
+Date: Thu, 27 Aug 2026 09:36:56 +0330
+Subject: [PATCH 05/11] Fix Slashuur energy ball and trace stutter
+
+---
+ .../ConcretePlayerCharacter/Slashuur.cpp      | 11 +++-
+ src/System/PC/PCCrashReporter.cpp             | 58 +++++++++++++++----
+ 2 files changed, 56 insertions(+), 13 deletions(-)
+
+diff --git a/src/Game/Component/Player/ConcretePlayerCharacter/Slashuur.cpp b/src/Game/Component/Player/ConcretePlayerCharacter/Slashuur.cpp
+index cc370e7..be81864 100644
+--- a/src/Game/Component/Player/ConcretePlayerCharacter/Slashuur.cpp
++++ b/src/Game/Component/Player/ConcretePlayerCharacter/Slashuur.cpp
+@@ -33,6 +33,7 @@ namespace Slashuur
+     static const float BOSS_GROUND_BLAST_JUMP_SPEED = 10.606602f;
+     static const float BOSS_SCYTHE_RADIUS = 3.2f;
+     static const int32 BOSS_DRAIN_DAMAGE = 30;
++    static const int32 BOSS_MAGIC_BONE_ID = 3;
+ 
+ 
+     static PLAYERTYPES::STATUS BossStatus(STATUS status)
+@@ -125,7 +126,15 @@ namespace Slashuur
+         character.GetPosition(&position);
+ 
+         RwV3d offset = Math::VECTOR3_ZERO;
+-        character.GetOffsetPosition(&offset, 1);
++        /*
++         * Boss Slashuur's CHR has a second position record (slot 1) that
++         * resolves to bone 3 with a zero local offset. Playable Slashuur's
++         * retail CHR has only slot 0, so requesting slot 1 dereferences a null
++         * CHitSphereParameter. Both characters use the same model/skeleton;
++         * resolve the authored bone directly instead of depending on the
++         * boss-only CHR slot.
++         */
++        character.GetBonePosition(&offset, BOSS_MAGIC_BONE_ID, nullptr);
+         Math::Vec3_Add(&position, &position, &offset);
+ 
+         RwV3d direction = { 0.0f, -1.0f, 0.0f };
+diff --git a/src/System/PC/PCCrashReporter.cpp b/src/System/PC/PCCrashReporter.cpp
+index 0ee8814..33927af 100644
+--- a/src/System/PC/PCCrashReporter.cpp
++++ b/src/System/PC/PCCrashReporter.cpp
+@@ -23,6 +23,7 @@ namespace
+ 
+     static LPTOP_LEVEL_EXCEPTION_FILTER s_pPreviousFilter = nullptr;
+     static volatile LONG s_handlingCrash = 0;
++    static HANDLE s_hTrace = INVALID_HANDLE_VALUE;
+ 
+ 
+     static void GetGameDirectory(char* path, size_t pathSize)
+@@ -99,6 +100,20 @@ namespace
+ 
+     static void AppendTraceText(const char* text)
+     {
++        if (!text)
++            return;
++
++        if (s_hTrace != INVALID_HANDLE_VALUE)
++        {
++            DWORD bytesWritten = 0;
++            WriteFile(s_hTrace,
++                      text,
++                      static_cast<DWORD>(std::strlen(text)),
++                      &bytesWritten,
++                      nullptr);
++            return;
++        };
++
+         char path[MAX_PATH] = {};
+         BuildGamePath(path, COUNT_OF(path), "TMNT2_Slashuur_trace.log");
+ 
+@@ -111,7 +126,12 @@ namespace
+                                    nullptr);
+         if (hFile != INVALID_HANDLE_VALUE)
+         {
+-            WriteAll(hFile, text);
++            DWORD bytesWritten = 0;
++            WriteFile(hFile,
++                      text,
++                      static_cast<DWORD>(std::strlen(text)),
++                      &bytesWritten,
++                      nullptr);
+             CloseHandle(hFile);
+         };
+     };
+@@ -192,6 +212,9 @@ namespace
+         if (InterlockedExchange(&s_handlingCrash, 1) != 0)
+             return EXCEPTION_EXECUTE_HANDLER;
+ 
++        if (s_hTrace != INVALID_HANDLE_VALUE)
++            FlushFileBuffers(s_hTrace);
++
+         SYSTEMTIME time = {};
+         GetLocalTime(&time);
+ 
+@@ -335,19 +358,24 @@ namespace
+     char path[MAX_PATH] = {};
+     BuildGamePath(path, COUNT_OF(path), "TMNT2_Slashuur_trace.log");
+ 
+-    HANDLE hFile = CreateFileA(path,
+-                               GENERIC_WRITE,
+-                               FILE_SHARE_READ | FILE_SHARE_WRITE,
+-                               nullptr,
+-                               CREATE_ALWAYS,
+-                               FILE_ATTRIBUTE_NORMAL,
+-                               nullptr);
+-    if (hFile != INVALID_HANDLE_VALUE)
++    if (s_hTrace != INVALID_HANDLE_VALUE)
+     {
+-        WriteAll(hFile,
++        CloseHandle(s_hTrace);
++        s_hTrace = INVALID_HANDLE_VALUE;
++    };
++
++    s_hTrace = CreateFileA(path,
++                           GENERIC_WRITE,
++                           FILE_SHARE_READ | FILE_SHARE_WRITE,
++                           nullptr,
++                           CREATE_ALWAYS,
++                           FILE_ATTRIBUTE_NORMAL,
++                           nullptr);
++    if (s_hTrace != INVALID_HANDLE_VALUE)
++    {
++        WriteAll(s_hTrace,
+                  "TMNT2 Playable Slashuur runtime trace\r\n"
+-                 "Crash logger: version 1\r\n");
+-        CloseHandle(hFile);
++                 "Crash logger: version 2 (buffered trace)\r\n");
+     };
+ 
+     s_handlingCrash = 0;
+@@ -359,6 +387,12 @@ namespace
+ /*static*/ void CPCCrashReporter::Uninstall(void)
+ {
+     Breadcrumb("SESSION normal shutdown");
++    if (s_hTrace != INVALID_HANDLE_VALUE)
++    {
++        FlushFileBuffers(s_hTrace);
++        CloseHandle(s_hTrace);
++        s_hTrace = INVALID_HANDLE_VALUE;
++    };
+     SetUnhandledExceptionFilter(s_pPreviousFilter);
+     s_pPreviousFilter = nullptr;
+ };

@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>T2-Mod-Manager</AssemblyName>
+    <RootNamespace>T2ModManager.App</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <DebugType>portable</DebugType>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../T2ModManager.Core/T2ModManager.Core.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="src/T2ModManager.Core/T2ModManager.Core.csproj" />
+  <Project Path="src/T2ModManager.App/T2ModManager.App.csproj" />
+  <Project Path="src/T2ModManager.Packager/T2ModManager.Packager.csproj" />
+  <Project Path="tests/T2ModManager.Core.Tests/T2ModManager.Core.Tests.csproj" />
+</Solution>
+

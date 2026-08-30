@@ -1,0 +1,142 @@
+From f553483fc5a05ff27252a1c3bb694d54fc71eb0f Mon Sep 17 00:00:00 2001
+From: Key1aN <109429578+Key1aN@users.noreply.github.com>
+Date: Wed, 26 Aug 2026 22:29:24 +0330
+Subject: [PATCH 03/11] Fix DirectX header staging
+
+---
+ .github/workflows/build-playable-slashuur.yml | 102 ++++++++++++------
+ 1 file changed, 71 insertions(+), 31 deletions(-)
+
+diff --git a/.github/workflows/build-playable-slashuur.yml b/.github/workflows/build-playable-slashuur.yml
+index 97b7286..982b5db 100644
+--- a/.github/workflows/build-playable-slashuur.yml
++++ b/.github/workflows/build-playable-slashuur.yml
+@@ -24,57 +24,97 @@ jobs:
+         run: |
+           $ErrorActionPreference = "Stop"
+ 
+-          $kitsRoot = "${env:ProgramFiles(x86)}\Windows Kits\10"
+-          if (-not (Test-Path $kitsRoot)) {
+-            throw "Windows 10 SDK was not found at $kitsRoot"
+-          }
+-
+-          $d3d9Header = Get-ChildItem "$kitsRoot\Include" -Recurse -File -Filter "d3d9.h" |
+-            Where-Object { $_.DirectoryName -match "\\um$" } |
+-            Sort-Object FullName -Descending |
+-            Select-Object -First 1
+-
+-          if (-not $d3d9Header) {
+-            throw "A Windows SDK containing the d3d9.h header was not found."
+-          }
+-
+           $dxsdk = Join-Path $env:RUNNER_TEMP "tmnt2-dxsdk"
+           $includeOut = Join-Path $dxsdk "Include"
+           $libOut = Join-Path $dxsdk "Lib\x86"
+           New-Item -ItemType Directory -Force -Path $includeOut, $libOut | Out-Null
+ 
+-          $sdkVersionRoot = Split-Path $d3d9Header.DirectoryName -Parent
+-          Copy-Item "$sdkVersionRoot\um\*" $includeOut -Recurse -Force
+-          Copy-Item "$sdkVersionRoot\shared\*" $includeOut -Recurse -Force
+-
+           $sdkPackageVersion = "10.0.26100.7705"
+-          $sdkPackageName = "microsoft.windows.sdk.cpp.x86"
+-          $sdkPackageUrl = "https://api.nuget.org/v3-flatcontainer/$sdkPackageName/$sdkPackageVersion/$sdkPackageName.$sdkPackageVersion.nupkg"
+-          $sdkPackageZip = Join-Path $env:RUNNER_TEMP "winsdk-x86.zip"
+-          $sdkPackageOut = Join-Path $env:RUNNER_TEMP "winsdk-x86"
+ 
+-          Invoke-WebRequest -Uri $sdkPackageUrl -OutFile $sdkPackageZip
++          function Get-VerifiedNuGetPackage {
++            param(
++              [string]$PackageName,
++              [string]$ExpectedHash,
++              [string]$OutputName
++            )
++
++            $packageUrl = "https://api.nuget.org/v3-flatcontainer/$PackageName/$sdkPackageVersion/$PackageName.$sdkPackageVersion.nupkg"
++            $packageZip = Join-Path $env:RUNNER_TEMP "$OutputName.zip"
++            $packageOut = Join-Path $env:RUNNER_TEMP $OutputName
++
++            & curl.exe --location --fail --retry 3 --retry-delay 2 --output $packageZip $packageUrl
++            if ($LASTEXITCODE -ne 0) {
++              throw "Failed to download $PackageName $sdkPackageVersion."
++            }
++
++            $actualHash = (Get-FileHash $packageZip -Algorithm SHA256).Hash.ToLowerInvariant()
++            if ($actualHash -ne $ExpectedHash) {
++              throw "$PackageName hash mismatch: $actualHash"
++            }
+ 
+-          $expectedHash = "4a8504308e253842054f0c385817522a895306308bf4d6dc11f09064bb27c280"
+-          $actualHash = (Get-FileHash $sdkPackageZip -Algorithm SHA256).Hash.ToLowerInvariant()
+-          if ($actualHash -ne $expectedHash) {
+-            throw "Windows SDK NuGet package hash mismatch: $actualHash"
++            Expand-Archive -Path $packageZip -DestinationPath $packageOut -Force
++            return $packageOut
+           }
+ 
+-          Expand-Archive -Path $sdkPackageZip -DestinationPath $sdkPackageOut -Force
++          $x86PackageOut = Get-VerifiedNuGetPackage `
++            -PackageName "microsoft.windows.sdk.cpp.x86" `
++            -ExpectedHash "4a8504308e253842054f0c385817522a895306308bf4d6dc11f09064bb27c280" `
++            -OutputName "winsdk-x86"
++
++          $kitsRoot = "${env:ProgramFiles(x86)}\Windows Kits\10"
++          $d3d9Header = $null
++          if (Test-Path "$kitsRoot\Include") {
++            $d3d9Header = Get-ChildItem "$kitsRoot\Include" -Recurse -File -Filter "d3d9.h" |
++              Where-Object { $_.DirectoryName -match "\\(shared|um)$" } |
++              Sort-Object FullName -Descending |
++              Select-Object -First 1
++          }
++
++          if ($d3d9Header) {
++            $headerVersionRoot = Get-Item (Split-Path $d3d9Header.DirectoryName -Parent)
++          }
++          else {
++            Write-Host "The runner SDK has no DirectX 9 headers; downloading Microsoft's SDK header package."
++            $headersPackageOut = Get-VerifiedNuGetPackage `
++              -PackageName "microsoft.windows.sdk.cpp" `
++              -ExpectedHash "ff455660bee071a744715a9665666fa29c07681579d3d815959a9eec5a556424" `
++              -OutputName "winsdk-headers"
++
++            $headerVersionRoot = Get-ChildItem "$headersPackageOut\c\Include" -Directory |
++              Where-Object {
++                (Test-Path (Join-Path $_.FullName "shared\d3d9.h")) -and
++                (Test-Path (Join-Path $_.FullName "um\dinput.h")) -and
++                (Test-Path (Join-Path $_.FullName "um\dsound.h"))
++              } |
++              Sort-Object Name -Descending |
++              Select-Object -First 1
++          }
++
++          if (-not $headerVersionRoot) {
++            throw "The Microsoft Windows SDK package did not contain the required DirectX headers."
++          }
++
++          Copy-Item "$($headerVersionRoot.FullName)\um\*" $includeOut -Recurse -Force
++          Copy-Item "$($headerVersionRoot.FullName)\shared\*" $includeOut -Recurse -Force
+ 
+           foreach ($library in @("d3d9.lib", "dinput8.lib", "dxguid.lib", "dsound.lib")) {
+-            $source = Join-Path $sdkPackageOut "c\um\x86\$library"
++            $source = Join-Path $x86PackageOut "c\um\x86\$library"
+             if (-not (Test-Path $source)) {
+               throw "Required DirectX library was not found: $source"
+             }
+             Copy-Item $source $libOut -Force
+           }
+ 
++          foreach ($header in @("d3d9.h", "dinput.h", "dsound.h")) {
++            if (-not (Test-Path (Join-Path $includeOut $header))) {
++              throw "Required DirectX header was not staged: $header"
++            }
++          }
++
+           "DXSDK_DIR=$dxsdk" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+           Write-Host "DXSDK_DIR=$dxsdk"
+-          Write-Host "Windows SDK header source: $sdkVersionRoot"
+-          Write-Host "Windows SDK x86 library package: $sdkPackageName $sdkPackageVersion"
++          Write-Host "Windows SDK package version: $sdkPackageVersion"
++          Write-Host "Windows SDK header source: $($headerVersionRoot.FullName)"
+ 
+       - name: Configure US Win32 Release build
+         shell: pwsh

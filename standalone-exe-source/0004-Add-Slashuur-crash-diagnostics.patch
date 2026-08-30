@@ -1,0 +1,1148 @@
+From 9c47490bf3f10279bd59a7184b94c320e4590a4d Mon Sep 17 00:00:00 2001
+From: Key1aN <109429578+Key1aN@users.noreply.github.com>
+Date: Wed, 26 Aug 2026 23:06:52 +0330
+Subject: [PATCH 04/11] Add Slashuur crash diagnostics
+
+---
+ .github/workflows/build-playable-slashuur.yml |  43 +-
+ SLASHUUR_CRASH_REPORTING.md                   |  27 ++
+ cmake/PlatformWin.cmake                       |   9 +-
+ .../ManipulatorSlashuur.cpp                   |  30 ++
+ .../ConcretePlayerCharacter/Slashuur.cpp      | 109 ++++-
+ src/System/PC/PCCrashReporter.cpp             | 420 ++++++++++++++++++
+ src/System/PC/PCCrashReporter.hpp             |  11 +
+ src/System/PC/PCDebug.cpp                     |   5 +-
+ src/System/PC/main.cpp                        |   6 +-
+ 9 files changed, 650 insertions(+), 10 deletions(-)
+ create mode 100644 SLASHUUR_CRASH_REPORTING.md
+ create mode 100644 src/System/PC/PCCrashReporter.cpp
+ create mode 100644 src/System/PC/PCCrashReporter.hpp
+
+diff --git a/.github/workflows/build-playable-slashuur.yml b/.github/workflows/build-playable-slashuur.yml
+index 982b5db..ff85fd2 100644
+--- a/.github/workflows/build-playable-slashuur.yml
++++ b/.github/workflows/build-playable-slashuur.yml
+@@ -1,4 +1,4 @@
+-name: Build playable Slashuur boss moves
++name: Build playable Slashuur diagnostics
+ 
+ on:
+   workflow_dispatch:
+@@ -136,12 +136,43 @@ jobs:
+             throw "The Release TMNT2.exe output was not found."
+           }
+ 
++          $linkedPdbPath = Join-Path $exe.DirectoryName "TMNT2.pdb"
++          if (Test-Path $linkedPdbPath) {
++            $pdb = Get-Item $linkedPdbPath
++          }
++          else {
++            $pdb = Get-ChildItem "$env:GITHUB_WORKSPACE" -Recurse -File -Filter "TMNT2.pdb" |
++              Where-Object { $_.FullName -notmatch "\\vendor\\" } |
++              Sort-Object LastWriteTimeUtc -Descending |
++              Select-Object -First 1
++          }
++
++          $map = Get-ChildItem "$env:GITHUB_WORKSPACE" -Recurse -File -Filter "TMNT2.map" |
++            Where-Object { $_.FullName -notmatch "\\vendor\\" } |
++            Sort-Object LastWriteTimeUtc -Descending |
++            Select-Object -First 1
++
++          if (-not $pdb) {
++            throw "The matching Release TMNT2.pdb was not found."
++          }
++
++          if (-not $map) {
++            throw "The matching Release TMNT2.map was not found."
++          }
++
+           $artifactDir = Join-Path $env:GITHUB_WORKSPACE "artifact"
+           New-Item -ItemType Directory -Force -Path $artifactDir | Out-Null
+-          $artifactExe = Join-Path $artifactDir "TMNT2_Playable_Slashuur_Boss_Moves_US.exe"
++          $artifactExe = Join-Path $artifactDir "TMNT2_Playable_Slashuur_Diagnostics_US.exe"
++          $artifactPdb = Join-Path $artifactDir "TMNT2.pdb"
++          $artifactMap = Join-Path $artifactDir "TMNT2.map"
+           Copy-Item $exe.FullName $artifactExe -Force
++          Copy-Item $pdb.FullName $artifactPdb -Force
++          Copy-Item $map.FullName $artifactMap -Force
++          Copy-Item (Join-Path $env:GITHUB_WORKSPACE "SLASHUUR_CRASH_REPORTING.md") $artifactDir -Force
+ 
+           $hash = (Get-FileHash $artifactExe -Algorithm SHA256).Hash.ToLowerInvariant()
++          $pdbHash = (Get-FileHash $artifactPdb -Algorithm SHA256).Hash.ToLowerInvariant()
++          $mapHash = (Get-FileHash $artifactMap -Algorithm SHA256).Hash.ToLowerInvariant()
+           $size = (Get-Item $artifactExe).Length
+           $commit = git rev-parse HEAD
+ 
+@@ -150,7 +181,11 @@ jobs:
+             "SourceCommit=$commit",
+             "Executable=$([System.IO.Path]::GetFileName($artifactExe))",
+             "Size=$size",
+-            "SHA256=$hash"
++            "SHA256=$hash",
++            "PDB=$([System.IO.Path]::GetFileName($artifactPdb))",
++            "PDBSHA256=$pdbHash",
++            "MAP=$([System.IO.Path]::GetFileName($artifactMap))",
++            "MAPSHA256=$mapHash"
+           ) | Set-Content (Join-Path $artifactDir "BUILD_INFO.txt") -Encoding utf8
+ 
+           Get-Content (Join-Path $artifactDir "BUILD_INFO.txt")
+@@ -158,7 +193,7 @@ jobs:
+       - name: Upload patched executable
+         uses: actions/upload-artifact@v4
+         with:
+-          name: TMNT2-Playable-Slashuur-Boss-Moves-US
++          name: TMNT2-Playable-Slashuur-Diagnostics-US
+           path: artifact/*
+           if-no-files-found: error
+           retention-days: 7
+diff --git a/SLASHUUR_CRASH_REPORTING.md b/SLASHUUR_CRASH_REPORTING.md
+new file mode 100644
+index 0000000..94fbf27
+--- /dev/null
++++ b/SLASHUUR_CRASH_REPORTING.md
+@@ -0,0 +1,27 @@
++# Slashuur diagnostic build
++
++This build writes crash diagnostics beside `TMNT2.exe`.
++
++## Files created after a crash
++
++- `TMNT2_Slashuur_trace.log` — the last completed move/resource checkpoint.
++- `TMNT2_crash_YYYYMMDD_HHMMSS_mmm.log` — exception code, address, RVA, access type, and x86 registers.
++- `TMNT2_crash_YYYYMMDD_HHMMSS_mmm.dmp` — Windows minidump for exact symbol analysis.
++
++The GitHub artifact also contains `TMNT2.pdb` and `TMNT2.map`. They are analysis
++files and do not need to be copied into the game directory.
++
++## Reproduction procedure
++
++1. Keep the already-modded `TMNT.DAT`/`TMNT.afs` installed.
++2. Back up the previous modded executable.
++3. Copy `TMNT2_Playable_Slashuur_Diagnostics_US.exe` to the game directory and
++   rename it to `TMNT2.exe`.
++4. Start a stage with playable Slashuur.
++5. Test only one failing move during that game launch.
++6. After the crash, ZIP the trace log, newest crash log, and matching minidump.
++7. Upload that ZIP together with the downloaded GitHub artifact.
++
++Start with Guard + Strong Attack (scythe), because it appears to fail earliest
++inside one of the newly imported animation/effect paths. Repeat with a fresh
++launch for Ground Blast, Shot, and Drain after the first crash is analyzed.
+diff --git a/cmake/PlatformWin.cmake b/cmake/PlatformWin.cmake
+index e9c2486..7dfaac7 100644
+--- a/cmake/PlatformWin.cmake
++++ b/cmake/PlatformWin.cmake
+@@ -61,6 +61,8 @@ target_compile_options(${EXEC_NAME} PRIVATE
+     /MP
+     /W4
+     /GR-
++    $<$<CONFIG:Release>:/Zi>
++    $<$<CONFIG:Release>:/Oy->
+     /wd4200 # nonstandard extension used: zero-sized array in struct/union
+     /wd4201 # nonstandard extension used: nameless struct/union
+     /wd4996 # function or variable may be unsafe
+@@ -76,8 +78,9 @@ if(MSVC_VERSION GREATER_EQUAL 1910)
+ endif()
+ 
+ target_link_options(${EXEC_NAME} PRIVATE 
+-    $<$<CONFIG:Release>:
+-        /INCREMENTAL:NO>
++    $<$<CONFIG:Release>:/INCREMENTAL:NO>
++    $<$<CONFIG:Release>:/DEBUG:FULL>
++    $<$<CONFIG:Release>:/MAP>
+     $<$<CONFIG:RelMinSize>:
+         /INCREMENTAL:NO>
+     /SAFESEH:NO 
+@@ -112,4 +115,4 @@ endif()
+ 
+ set_target_properties(${EXEC_NAME} PROPERTIES 
+     VS_DEBUGGER_COMMAND_ARGUMENTS "-afspath=${DEBUG_AFS_PATH} -wnd -lang=en"
+-)
+\ No newline at end of file
++)
+diff --git a/src/Game/Component/Player/ConcreteManipulator/ManipulatorSlashuur.cpp b/src/Game/Component/Player/ConcreteManipulator/ManipulatorSlashuur.cpp
+index 8c0aa9f..7792bb2 100644
+--- a/src/Game/Component/Player/ConcreteManipulator/ManipulatorSlashuur.cpp
++++ b/src/Game/Component/Player/ConcreteManipulator/ManipulatorSlashuur.cpp
+@@ -3,6 +3,30 @@
+ #include "Game/Component/Player/ConcretePlayerCharacter/Slashuur.hpp"
+ #include "Game/Component/Player/PlayerCharacter.hpp"
+ 
++#if defined(TARGET_PC)
++#include "System/PC/PCCrashReporter.hpp"
++#define SLASHUUR_INPUT_TRACE(...) CPCCrashReporter::Breadcrumb(__VA_ARGS__)
++#else
++#define SLASHUUR_INPUT_TRACE(...) ((void)0)
++#endif /* TARGET_PC */
++
++
++namespace
++{
++    static const char* BossMoveName(Slashuur::STATUS status)
++    {
++        switch (status)
++        {
++        case Slashuur::STATUS_BOSS_TELEPORT:     return "teleport";
++        case Slashuur::STATUS_BOSS_SCYTHE:       return "scythe";
++        case Slashuur::STATUS_BOSS_GROUND_BLAST: return "ground_blast";
++        case Slashuur::STATUS_BOSS_SHOT:         return "shot";
++        case Slashuur::STATUS_BOSS_DRAIN:        return "drain";
++        default:                                 return "unknown";
++        };
++    };
++}; /* anonymous namespace */
++
+ 
+ CSlashuurManipulator::CSlashuurManipulator(CPlayerCharacter* pPlayerChr, int32 nControllerNo)
+ : CManipulator("sla_mp", pPlayerChr, nControllerNo)
+@@ -62,6 +86,12 @@ bool CSlashuurManipulator::RunBossMoveChord(void)
+     if (m_input.m_move)
+         m_pPlayerChr->SetDirection(m_input.m_fDirection);
+ 
++    SLASHUUR_INPUT_TRACE("INPUT boss move=%s status=%d change begin",
++                         BossMoveName(status),
++                         static_cast<int32>(status));
+     m_pPlayerChr->ChangeStatus(static_cast<PLAYERTYPES::STATUS>(status));
++    SLASHUUR_INPUT_TRACE("INPUT boss move=%s status=%d change returned",
++                         BossMoveName(status),
++                         static_cast<int32>(status));
+     return true;
+ };
+diff --git a/src/Game/Component/Player/ConcretePlayerCharacter/Slashuur.cpp b/src/Game/Component/Player/ConcretePlayerCharacter/Slashuur.cpp
+index 4a48f69..cc370e7 100644
+--- a/src/Game/Component/Player/ConcretePlayerCharacter/Slashuur.cpp
++++ b/src/Game/Component/Player/ConcretePlayerCharacter/Slashuur.cpp
+@@ -20,6 +20,13 @@
+ #include "Game/System/Map/WorldMap.hpp"
+ #include "Game/System/Sound/GameSound.hpp"
+ 
++#if defined(TARGET_PC)
++#include "System/PC/PCCrashReporter.hpp"
++#define SLASHUUR_TRACE(...) CPCCrashReporter::Breadcrumb(__VA_ARGS__)
++#else
++#define SLASHUUR_TRACE(...) ((void)0)
++#endif /* TARGET_PC */
++
+ 
+ namespace Slashuur
+ {
+@@ -36,7 +43,16 @@ namespace Slashuur
+ 
+     static void PlayScaledEffect(EFFECTID::VALUE idEffect, const RwV3d& position, float scale)
+     {
++        SLASHUUR_TRACE("EFFECT play id=%d position=(%.3f, %.3f, %.3f) scale=%.3f",
++                       static_cast<int32>(idEffect),
++                       position.x,
++                       position.y,
++                       position.z,
++                       scale);
+         uint32 hEffect = CEffectManager::Play(idEffect, &position);
++        SLASHUUR_TRACE("EFFECT result id=%d handle=0x%08X",
++                       static_cast<int32>(idEffect),
++                       hEffect);
+         if (hEffect)
+             CEffectManager::SetScale(hEffect, scale);
+     };
+@@ -48,6 +64,13 @@ namespace Slashuur
+                                         int32 power,
+                                         CHitAttackData::STATUS status)
+     {
++        SLASHUUR_TRACE("ATTACK register radius=%.3f power=%d status=%d position=(%.3f, %.3f, %.3f)",
++                       radius,
++                       power,
++                       static_cast<int32>(status),
++                       position.x,
++                       position.y,
++                       position.z);
+         RwSphere hitSphere;
+         hitSphere.center = position;
+         hitSphere.radius = radius;
+@@ -63,6 +86,7 @@ namespace Slashuur
+         attack.SetSphere(&hitSphere);
+ 
+         CHitAttackManager::RegistAttack(&attack);
++        SLASHUUR_TRACE("ATTACK registered");
+     };
+ 
+ 
+@@ -96,6 +120,7 @@ namespace Slashuur
+ 
+     static uint32 SpawnPurpleBall(CPlayerCharacter& character, bool bDownward)
+     {
++        SLASHUUR_TRACE("SLABALL begin downward=%d", (bDownward ? 1 : 0));
+         RwV3d position = Math::VECTOR3_ZERO;
+         character.GetPosition(&position);
+ 
+@@ -115,26 +140,39 @@ namespace Slashuur
+         parameter.SetPositon(&position);
+         parameter.SetDirection(&direction);
+ 
++        SLASHUUR_TRACE("SLABALL play position=(%.3f, %.3f, %.3f) direction=(%.3f, %.3f, %.3f)",
++                       position.x,
++                       position.y,
++                       position.z,
++                       direction.x,
++                       direction.y,
++                       direction.z);
+         uint32 hMagic = CMagicManager::Play(MAGICID::ID_SLABALL, &parameter);
++        SLASHUUR_TRACE("SLABALL result handle=0x%08X", hMagic);
+         if (hMagic && bDownward)
+         {
++            SLASHUUR_TRACE("SLABALL configure downward scale=1.73 speed=50");
+             CMagicManager::SetScale(hMagic, 1.73f);
+             CMagicManager::SetSpeed(hMagic, 50.0f);
+         };
+ 
++        SLASHUUR_TRACE("SLABALL play sound=4401");
+         CGameSound::PlayObjectSE(&character, SDCODE_SE(4401));
++        SLASHUUR_TRACE("SLABALL complete");
+         return hMagic;
+     };
+ 
+ 
+     static int32 DrainNearbyEnemies(CPlayerCharacter& character)
+     {
++        SLASHUUR_TRACE("DRAIN scan begin");
+         RwV3d playerPosition = Math::VECTOR3_ZERO;
+         character.GetBodyPosition(&playerPosition);
+ 
+         int32 drained = 0;
+         const float radiusSq = 8.0f * 8.0f;
+         int32 enemyMax = CGameProperty::GetEnemyMax();
++        SLASHUUR_TRACE("DRAIN enemy count=%d", enemyMax);
+         for (int32 i = 0; i < enemyMax; ++i)
+         {
+             CEnemy* pEnemy = CGameProperty::GetEnemy(i);
+@@ -151,6 +189,9 @@ namespace Slashuur
+             if (Math::Vec3_Dot(&distance, &distance) > radiusSq)
+                 continue;
+ 
++            SLASHUUR_TRACE("DRAIN apply enemy=%d handle=0x%08X",
++                           i,
++                           pEnemy->GetHandle());
+             enemyCharacter.OnMessageReceivedDamage(BOSS_DRAIN_DAMAGE);
+             PlayScaledEffect(EFFECTID::ID_HPSTEAL_LIGHT, enemyPosition, 1.0f);
+             ++drained;
+@@ -161,10 +202,12 @@ namespace Slashuur
+ 
+         if (drained > 0)
+         {
++            SLASHUUR_TRACE("DRAIN heal player amount=%d", BOSS_DRAIN_DAMAGE * drained);
+             character.OnMessageReceivedDamage(-(BOSS_DRAIN_DAMAGE * drained));
+             PlayScaledEffect(EFFECTID::ID_HPSTEAL_LIGHT, playerPosition, 1.5f);
+         };
+ 
++        SLASHUUR_TRACE("DRAIN scan complete drained=%d", drained);
+         return drained;
+     };
+ 
+@@ -186,6 +229,7 @@ namespace Slashuur
+ 
+     void CBossTeleport::OnAttach(void)
+     {
++        SLASHUUR_TRACE("MOVE teleport attach begin");
+         m_step = 0;
+ 
+         Character().SetAttribute(PLAYERTYPES::ATTRIBUTE_INVINCIBILITY);
+@@ -197,11 +241,13 @@ namespace Slashuur
+         Character().GetFootPosition(&position);
+         PlayScaledEffect(EFFECTID::ID_WARP_START, position, 1.5f);
+         CGameSound::PlayObjectSE(m_pPlayerChr, SDCODE_SE(4396));
++        SLASHUUR_TRACE("MOVE teleport attach complete");
+     };
+ 
+ 
+     void CBossTeleport::OnDetach(void)
+     {
++        SLASHUUR_TRACE("MOVE teleport detach");
+         Character().GetModel()->SetDrawEnable(true);
+         Character().SetEnableBodyHit(true);
+         Character().SetEnableCatchHit(true);
+@@ -218,6 +264,7 @@ namespace Slashuur
+         case 0:
+             if (duration >= 0.18f)
+             {
++                SLASHUUR_TRACE("MOVE teleport step=0 hide");
+                 Character().GetModel()->SetDrawEnable(false);
+                 Character().SetEnableBodyHit(false);
+                 Character().SetEnableCatchHit(false);
+@@ -229,6 +276,7 @@ namespace Slashuur
+         case 1:
+             if (duration >= 0.36f)
+             {
++                SLASHUUR_TRACE("MOVE teleport step=1 relocate");
+                 TeleportForward(Character());
+ 
+                 RwV3d position = Math::VECTOR3_ZERO;
+@@ -249,7 +297,10 @@ namespace Slashuur
+ 
+         case 2:
+             if (duration >= 0.58f)
++            {
++                SLASHUUR_TRACE("MOVE teleport step=2 idle");
+                 StateMachine().ChangeStatus(PLAYERTYPES::STATUS_IDLE);
++            };
+             break;
+ 
+         default:
+@@ -260,23 +311,29 @@ namespace Slashuur
+ 
+     void CBossScythe::OnAttach(void)
+     {
++        SLASHUUR_TRACE("MOVE scythe attach begin");
+         m_step = 0;
+         m_fPulseTime = 0.2f;
+ 
+         Character().SetAttribute(PLAYERTYPES::ATTRIBUTE_INVINCIBILITY);
+         Character().ResetVelocity();
+         Character().ResetAcceleration();
++        SLASHUUR_TRACE("MOVE scythe change motion=E2 begin");
+         Character().ChangeMotion(MOTIONNAMES::SCYTHE_LOOP, true);
++        SLASHUUR_TRACE("MOVE scythe change motion=E2 complete");
+ 
+         RwV3d position = Math::VECTOR3_ZERO;
+         Character().GetFootPosition(&position);
+         PlayScaledEffect(EFFECTID::ID_WARP_OUT, position, 1.25f);
++        SLASHUUR_TRACE("MOVE scythe play sound=4403");
+         CGameSound::PlayObjectSE(m_pPlayerChr, SDCODE_SE(4403));
++        SLASHUUR_TRACE("MOVE scythe attach complete");
+     };
+ 
+ 
+     void CBossScythe::OnDetach(void)
+     {
++        SLASHUUR_TRACE("MOVE scythe detach");
+         Character().ClearAttribute(PLAYERTYPES::ATTRIBUTE_INVINCIBILITY);
+         CGameSound::FadeOutSE(SDCODE_SE(4403), CGameSound::FADESPEED_NORMAL);
+     };
+@@ -289,6 +346,7 @@ namespace Slashuur
+             m_fPulseTime += CGameProperty::GetElapsedTime();
+             if (m_fPulseTime >= 0.45f)
+             {
++                SLASHUUR_TRACE("MOVE scythe pulse begin");
+                 m_fPulseTime = 0.0f;
+ 
+                 RwV3d center = Math::VECTOR3_ZERO;
+@@ -303,16 +361,20 @@ namespace Slashuur
+                     position.z += std::cos(angle) * BOSS_SCYTHE_RADIUS;
+                     PlayScaledEffect(EFFECTID::ID_SICKLE_WARP, position, 0.8f);
+                 };
++                SLASHUUR_TRACE("MOVE scythe pulse complete");
+             };
+ 
+             if (StateMachine().GetStatusDuration() >= 2.0f)
+             {
++                SLASHUUR_TRACE("MOVE scythe change motion=E3 begin");
+                 Character().ChangeMotion(MOTIONNAMES::SCYTHE_END, true);
++                SLASHUUR_TRACE("MOVE scythe change motion=E3 complete");
+                 ++m_step;
+             };
+         }
+         else if (Character().IsMotionEnd())
+         {
++            SLASHUUR_TRACE("MOVE scythe idle");
+             StateMachine().ChangeStatus(PLAYERTYPES::STATUS_IDLE);
+         };
+     };
+@@ -320,6 +382,7 @@ namespace Slashuur
+ 
+     void CBossGroundBlast::OnAttach(void)
+     {
++        SLASHUUR_TRACE("MOVE ground_blast attach begin");
+         m_step = 0;
+         m_bShot = false;
+ 
+@@ -327,13 +390,17 @@ namespace Slashuur
+         Character().ResetVelocity();
+         Character().ResetAcceleration();
+         Character().SetCharacterFlag(CHARACTERTYPES::FLAG_FIXED_MODEL_ROTATION);
++        SLASHUUR_TRACE("MOVE ground_blast change motion=D1 begin");
+         Character().ChangeMotion(MOTIONNAMES::GROUND_BLAST_START, true);
++        SLASHUUR_TRACE("MOVE ground_blast change motion=D1 complete");
+         CGameSound::PlayAttackSE(m_pPlayerChr);
++        SLASHUUR_TRACE("MOVE ground_blast attach complete");
+     };
+ 
+ 
+     void CBossGroundBlast::OnDetach(void)
+     {
++        SLASHUUR_TRACE("MOVE ground_blast detach step=%d shot=%d", m_step, (m_bShot ? 1 : 0));
+         Character().ClearAttribute(PLAYERTYPES::ATTRIBUTE_INVINCIBILITY);
+         Character().ClearPlayerFlag(PLAYERTYPES::FLAG_AERIAL_STATUS);
+         Character().ClearCharacterFlag(CHARACTERTYPES::FLAG_FIXED_MODEL_ROTATION |
+@@ -348,7 +415,9 @@ namespace Slashuur
+         case 0:
+             if (Character().IsMotionEnd())
+             {
++                SLASHUUR_TRACE("MOVE ground_blast step=0 change motion=D2 begin");
+                 Character().ChangeMotion(MOTIONNAMES::GROUND_BLAST_JUMP, true);
++                SLASHUUR_TRACE("MOVE ground_blast step=0 change motion=D2 complete");
+ 
+                 RwV3d velocity = Math::VECTOR3_ZERO;
+                 velocity.y = BOSS_GROUND_BLAST_JUMP_SPEED;
+@@ -365,7 +434,10 @@ namespace Slashuur
+                 Character().GetVelocity(&velocity);
+                 if (velocity.y <= 0.0f)
+                 {
++                    SLASHUUR_TRACE("MOVE ground_blast step=1 apex velocityY=%.3f", velocity.y);
++                    SLASHUUR_TRACE("MOVE ground_blast change motion=DAttack begin");
+                     Character().ChangeMotion(MOTIONNAMES::GROUND_BLAST_FIRE, true);
++                    SLASHUUR_TRACE("MOVE ground_blast change motion=DAttack complete");
+                     SpawnPurpleBall(Character(), true);
+                     m_bShot = true;
+                     ++m_step;
+@@ -386,10 +458,13 @@ namespace Slashuur
+                 if ((std::fabs(footPosition.y - mapHeight) <= 0.25f) &&
+                     (std::fabs(velocity.y) <= 0.01f))
+                 {
++                    SLASHUUR_TRACE("MOVE ground_blast step=2 landed mapHeight=%.3f", mapHeight);
+                     Character().ResetVelocity();
+                     Character().ResetAcceleration();
+                     Character().ClearPlayerFlag(PLAYERTYPES::FLAG_AERIAL_STATUS);
++                    SLASHUUR_TRACE("MOVE ground_blast change motion=D3 begin");
+                     Character().ChangeMotion(MOTIONNAMES::GROUND_BLAST_END, true);
++                    SLASHUUR_TRACE("MOVE ground_blast change motion=D3 complete");
+                     ++m_step;
+                 };
+             };
+@@ -397,7 +472,10 @@ namespace Slashuur
+ 
+         case 3:
+             if (Character().IsMotionEnd())
++            {
++                SLASHUUR_TRACE("MOVE ground_blast idle");
+                 StateMachine().ChangeStatus(PLAYERTYPES::STATUS_IDLE);
++            };
+             break;
+ 
+         default:
+@@ -408,18 +486,22 @@ namespace Slashuur
+ 
+     void CBossShot::OnAttach(void)
+     {
++        SLASHUUR_TRACE("MOVE shot attach begin");
+         m_bShot = false;
+ 
+         Character().ResetVelocity();
+         Character().ResetAcceleration();
++        SLASHUUR_TRACE("MOVE shot change motion=ATTACK_KNIFE begin");
+         Character().ChangeMotion(PLAYERTYPES::MOTIONNAMES::ATTACK_KNIFE, true);
++        SLASHUUR_TRACE("MOVE shot change motion=ATTACK_KNIFE complete");
+         CGameSound::PlayAttackSE(m_pPlayerChr);
++        SLASHUUR_TRACE("MOVE shot attach complete");
+     };
+ 
+ 
+     void CBossShot::OnDetach(void)
+     {
+-        ;
++        SLASHUUR_TRACE("MOVE shot detach fired=%d", (m_bShot ? 1 : 0));
+     };
+ 
+ 
+@@ -427,17 +509,22 @@ namespace Slashuur
+     {
+         if (!m_bShot && Character().TestCharacterFlag(CHARACTERTYPES::FLAG_OCCURED_TIMING))
+         {
++            SLASHUUR_TRACE("MOVE shot timing fired");
+             SpawnPurpleBall(Character(), false);
+             m_bShot = true;
+         };
+ 
+         if (Character().IsMotionEnd())
++        {
++            SLASHUUR_TRACE("MOVE shot idle");
+             StateMachine().ChangeStatus(PLAYERTYPES::STATUS_IDLE);
++        };
+     };
+ 
+ 
+     void CBossDrain::OnAttach(void)
+     {
++        SLASHUUR_TRACE("MOVE drain attach begin");
+         m_step = 0;
+         m_hEffect = 0;
+         m_bDrained = false;
+@@ -445,13 +532,20 @@ namespace Slashuur
+         Character().SetAttribute(PLAYERTYPES::ATTRIBUTE_INVINCIBILITY);
+         Character().ResetVelocity();
+         Character().ResetAcceleration();
++        SLASHUUR_TRACE("MOVE drain change motion=C1 begin");
+         Character().ChangeMotion(MOTIONNAMES::DRAIN_START, true);
++        SLASHUUR_TRACE("MOVE drain change motion=C1 complete");
+         CGameSound::PlayObjectSE(m_pPlayerChr, SDCODE_SE(4402));
++        SLASHUUR_TRACE("MOVE drain attach complete");
+     };
+ 
+ 
+     void CBossDrain::OnDetach(void)
+     {
++        SLASHUUR_TRACE("MOVE drain detach step=%d effect=0x%08X drained=%d",
++                       m_step,
++                       m_hEffect,
++                       (m_bDrained ? 1 : 0));
+         Character().ClearAttribute(PLAYERTYPES::ATTRIBUTE_INVINCIBILITY);
+         if (m_hEffect)
+         {
+@@ -470,10 +564,12 @@ namespace Slashuur
+         case 0:
+             if (Character().TestCharacterFlag(CHARACTERTYPES::FLAG_OCCURED_TIMING))
+             {
++                SLASHUUR_TRACE("MOVE drain step=0 timing effect=SLA_SHADOW begin");
+                 RwV3d position = Math::VECTOR3_ZERO;
+                 Character().GetFootPosition(&position);
+                 position.y += 0.1f;
+                 m_hEffect = CEffectManager::Play(EFFECTID::ID_SLA_SHADOW, &position);
++                SLASHUUR_TRACE("MOVE drain step=0 effect result=0x%08X", m_hEffect);
+                 if (m_hEffect)
+                     CEffectManager::SetScale(m_hEffect, 1.25f);
+                 ++m_step;
+@@ -483,7 +579,9 @@ namespace Slashuur
+         case 1:
+             if (Character().IsMotionEnd())
+             {
++                SLASHUUR_TRACE("MOVE drain step=1 change motion=C2 begin");
+                 Character().ChangeMotion(MOTIONNAMES::DRAIN_START2, true);
++                SLASHUUR_TRACE("MOVE drain step=1 change motion=C2 complete");
+                 ++m_step;
+             };
+             break;
+@@ -491,13 +589,17 @@ namespace Slashuur
+         case 2:
+             if (!m_bDrained && Character().TestCharacterFlag(CHARACTERTYPES::FLAG_OCCURED_TIMING))
+             {
++                SLASHUUR_TRACE("MOVE drain step=2 timing drain begin");
+                 DrainNearbyEnemies(Character());
++                SLASHUUR_TRACE("MOVE drain step=2 timing drain complete");
+                 m_bDrained = true;
+             };
+ 
+             if (Character().IsMotionEnd())
+             {
++                SLASHUUR_TRACE("MOVE drain step=2 change motion=C3 begin");
+                 Character().ChangeMotion(MOTIONNAMES::DRAIN_LOOP, true);
++                SLASHUUR_TRACE("MOVE drain step=2 change motion=C3 complete");
+                 ++m_step;
+             };
+             break;
+@@ -505,14 +607,19 @@ namespace Slashuur
+         case 3:
+             if (StateMachine().GetStatusDuration() >= 3.0f)
+             {
++                SLASHUUR_TRACE("MOVE drain step=3 change motion=C4 begin");
+                 Character().ChangeMotion(MOTIONNAMES::DRAIN_END, true);
++                SLASHUUR_TRACE("MOVE drain step=3 change motion=C4 complete");
+                 ++m_step;
+             };
+             break;
+ 
+         case 4:
+             if (Character().IsMotionEnd())
++            {
++                SLASHUUR_TRACE("MOVE drain idle");
+                 StateMachine().ChangeStatus(PLAYERTYPES::STATUS_IDLE);
++            };
+             break;
+ 
+         default:
+diff --git a/src/System/PC/PCCrashReporter.cpp b/src/System/PC/PCCrashReporter.cpp
+new file mode 100644
+index 0000000..0ee8814
+--- /dev/null
++++ b/src/System/PC/PCCrashReporter.cpp
+@@ -0,0 +1,420 @@
++#include "PCCrashReporter.hpp"
++
++#include "PCTypedefs.hpp"
++
++#include <DbgHelp.h>
++#include <cstdarg>
++#include <cstdint>
++#include <cstdio>
++#include <cstring>
++
++
++namespace
++{
++    typedef BOOL(WINAPI* MiniDumpWriteDumpProc)(
++        HANDLE,
++        DWORD,
++        HANDLE,
++        MINIDUMP_TYPE,
++        PMINIDUMP_EXCEPTION_INFORMATION,
++        PMINIDUMP_USER_STREAM_INFORMATION,
++        PMINIDUMP_CALLBACK_INFORMATION
++    );
++
++    static LPTOP_LEVEL_EXCEPTION_FILTER s_pPreviousFilter = nullptr;
++    static volatile LONG s_handlingCrash = 0;
++
++
++    static void GetGameDirectory(char* path, size_t pathSize)
++    {
++        path[0] = '\0';
++        DWORD length = GetModuleFileNameA(nullptr, path, static_cast<DWORD>(pathSize));
++        if (!length || (length >= pathSize))
++        {
++            std::strcpy(path, ".\\");
++            return;
++        };
++
++        char* pBackslash = std::strrchr(path, '\\');
++        char* pSlash = std::strrchr(path, '/');
++        char* pSeparator = pBackslash;
++        if (!pSeparator || (pSlash && (pSlash > pSeparator)))
++            pSeparator = pSlash;
++        if (pSeparator)
++            pSeparator[1] = '\0';
++        else
++            std::strcpy(path, ".\\");
++    };
++
++
++    static void BuildGamePath(char* path, size_t pathSize, const char* filename)
++    {
++        char directory[MAX_PATH] = {};
++        GetGameDirectory(directory, COUNT_OF(directory));
++        _snprintf_s(path, pathSize, _TRUNCATE, "%s%s", directory, filename);
++    };
++
++
++    static void BuildTimestampedGamePath(char* path,
++                                         size_t pathSize,
++                                         const char* prefix,
++                                         const char* extension)
++    {
++        SYSTEMTIME time = {};
++        GetLocalTime(&time);
++
++        char filename[MAX_PATH] = {};
++        _snprintf_s(filename,
++                    COUNT_OF(filename),
++                    _TRUNCATE,
++                    "%s_%04u%02u%02u_%02u%02u%02u_%03u.%s",
++                    prefix,
++                    time.wYear,
++                    time.wMonth,
++                    time.wDay,
++                    time.wHour,
++                    time.wMinute,
++                    time.wSecond,
++                    time.wMilliseconds,
++                    extension);
++
++        BuildGamePath(path, pathSize, filename);
++    };
++
++
++    static void WriteAll(HANDLE hFile, const char* text)
++    {
++        if ((hFile == INVALID_HANDLE_VALUE) || !text)
++            return;
++
++        DWORD bytesWritten = 0;
++        WriteFile(hFile,
++                  text,
++                  static_cast<DWORD>(std::strlen(text)),
++                  &bytesWritten,
++                  nullptr);
++        FlushFileBuffers(hFile);
++    };
++
++
++    static void AppendTraceText(const char* text)
++    {
++        char path[MAX_PATH] = {};
++        BuildGamePath(path, COUNT_OF(path), "TMNT2_Slashuur_trace.log");
++
++        HANDLE hFile = CreateFileA(path,
++                                   FILE_APPEND_DATA,
++                                   FILE_SHARE_READ | FILE_SHARE_WRITE,
++                                   nullptr,
++                                   OPEN_ALWAYS,
++                                   FILE_ATTRIBUTE_NORMAL,
++                                   nullptr);
++        if (hFile != INVALID_HANDLE_VALUE)
++        {
++            WriteAll(hFile, text);
++            CloseHandle(hFile);
++        };
++    };
++
++
++    static const char* ExceptionName(DWORD code)
++    {
++        switch (code)
++        {
++        case EXCEPTION_ACCESS_VIOLATION:         return "EXCEPTION_ACCESS_VIOLATION";
++        case EXCEPTION_ARRAY_BOUNDS_EXCEEDED:    return "EXCEPTION_ARRAY_BOUNDS_EXCEEDED";
++        case EXCEPTION_BREAKPOINT:               return "EXCEPTION_BREAKPOINT";
++        case EXCEPTION_DATATYPE_MISALIGNMENT:     return "EXCEPTION_DATATYPE_MISALIGNMENT";
++        case EXCEPTION_FLT_DIVIDE_BY_ZERO:        return "EXCEPTION_FLT_DIVIDE_BY_ZERO";
++        case EXCEPTION_FLT_INVALID_OPERATION:     return "EXCEPTION_FLT_INVALID_OPERATION";
++        case EXCEPTION_ILLEGAL_INSTRUCTION:       return "EXCEPTION_ILLEGAL_INSTRUCTION";
++        case EXCEPTION_IN_PAGE_ERROR:             return "EXCEPTION_IN_PAGE_ERROR";
++        case EXCEPTION_INT_DIVIDE_BY_ZERO:        return "EXCEPTION_INT_DIVIDE_BY_ZERO";
++        case EXCEPTION_INT_OVERFLOW:              return "EXCEPTION_INT_OVERFLOW";
++        case EXCEPTION_INVALID_DISPOSITION:        return "EXCEPTION_INVALID_DISPOSITION";
++        case EXCEPTION_NONCONTINUABLE_EXCEPTION:   return "EXCEPTION_NONCONTINUABLE_EXCEPTION";
++        case EXCEPTION_PRIV_INSTRUCTION:           return "EXCEPTION_PRIV_INSTRUCTION";
++        case EXCEPTION_STACK_OVERFLOW:             return "EXCEPTION_STACK_OVERFLOW";
++        default:                                   return "UNKNOWN_EXCEPTION";
++        };
++    };
++
++
++    static void WriteMiniDump(const char* path, EXCEPTION_POINTERS* pException)
++    {
++        HMODULE hDbgHelp = LoadLibraryA("dbghelp.dll");
++        if (!hDbgHelp)
++            return;
++
++        MiniDumpWriteDumpProc pMiniDumpWriteDump =
++            reinterpret_cast<MiniDumpWriteDumpProc>(GetProcAddress(hDbgHelp, "MiniDumpWriteDump"));
++
++        if (pMiniDumpWriteDump)
++        {
++            HANDLE hFile = CreateFileA(path,
++                                       GENERIC_WRITE,
++                                       FILE_SHARE_READ,
++                                       nullptr,
++                                       CREATE_ALWAYS,
++                                       FILE_ATTRIBUTE_NORMAL,
++                                       nullptr);
++            if (hFile != INVALID_HANDLE_VALUE)
++            {
++                MINIDUMP_EXCEPTION_INFORMATION exceptionInfo = {};
++                exceptionInfo.ThreadId = GetCurrentThreadId();
++                exceptionInfo.ExceptionPointers = pException;
++                exceptionInfo.ClientPointers = FALSE;
++
++                MINIDUMP_TYPE dumpType = static_cast<MINIDUMP_TYPE>(
++                    MiniDumpWithDataSegs |
++                    MiniDumpWithHandleData |
++                    MiniDumpWithIndirectlyReferencedMemory |
++                    MiniDumpWithThreadInfo
++                );
++
++                pMiniDumpWriteDump(GetCurrentProcess(),
++                                   GetCurrentProcessId(),
++                                   hFile,
++                                   dumpType,
++                                   &exceptionInfo,
++                                   nullptr,
++                                   nullptr);
++                CloseHandle(hFile);
++            };
++        };
++
++        FreeLibrary(hDbgHelp);
++    };
++
++
++    static LONG WINAPI CrashFilter(EXCEPTION_POINTERS* pException)
++    {
++        if (InterlockedExchange(&s_handlingCrash, 1) != 0)
++            return EXCEPTION_EXECUTE_HANDLER;
++
++        SYSTEMTIME time = {};
++        GetLocalTime(&time);
++
++        char logFilename[MAX_PATH] = {};
++        char dumpFilename[MAX_PATH] = {};
++        _snprintf_s(logFilename,
++                    COUNT_OF(logFilename),
++                    _TRUNCATE,
++                    "TMNT2_crash_%04u%02u%02u_%02u%02u%02u_%03u.log",
++                    time.wYear,
++                    time.wMonth,
++                    time.wDay,
++                    time.wHour,
++                    time.wMinute,
++                    time.wSecond,
++                    time.wMilliseconds);
++        _snprintf_s(dumpFilename,
++                    COUNT_OF(dumpFilename),
++                    _TRUNCATE,
++                    "TMNT2_crash_%04u%02u%02u_%02u%02u%02u_%03u.dmp",
++                    time.wYear,
++                    time.wMonth,
++                    time.wDay,
++                    time.wHour,
++                    time.wMinute,
++                    time.wSecond,
++                    time.wMilliseconds);
++
++        char logPath[MAX_PATH] = {};
++        char dumpPath[MAX_PATH] = {};
++        BuildGamePath(logPath, COUNT_OF(logPath), logFilename);
++        BuildGamePath(dumpPath, COUNT_OF(dumpPath), dumpFilename);
++
++        HANDLE hLog = CreateFileA(logPath,
++                                  GENERIC_WRITE,
++                                  FILE_SHARE_READ,
++                                  nullptr,
++                                  CREATE_ALWAYS,
++                                  FILE_ATTRIBUTE_NORMAL,
++                                  nullptr);
++
++        if (hLog != INVALID_HANDLE_VALUE)
++        {
++            EXCEPTION_RECORD* pRecord = (pException ? pException->ExceptionRecord : nullptr);
++            CONTEXT* pContext = (pException ? pException->ContextRecord : nullptr);
++            DWORD exceptionCode = (pRecord ? pRecord->ExceptionCode : 0);
++            std::uintptr_t exceptionAddress =
++                reinterpret_cast<std::uintptr_t>(pRecord ? pRecord->ExceptionAddress : nullptr);
++            std::uintptr_t moduleBase = reinterpret_cast<std::uintptr_t>(GetModuleHandleA(nullptr));
++            std::uintptr_t exceptionRva =
++                ((exceptionAddress >= moduleBase) ? (exceptionAddress - moduleBase) : 0);
++
++            char text[4096] = {};
++            _snprintf_s(text,
++                        COUNT_OF(text),
++                        _TRUNCATE,
++                        "TMNT2 Playable Slashuur crash report\r\n"
++                        "Time: %04u-%02u-%02u %02u:%02u:%02u.%03u\r\n"
++                        "ProcessId: %lu\r\n"
++                        "ThreadId: %lu\r\n"
++                        "Exception: %s (0x%08lX)\r\n"
++                        "ExceptionAddress: 0x%08lX\r\n"
++                        "ModuleBase: 0x%08lX\r\n"
++                        "ModuleRVA: 0x%08lX\r\n",
++                        time.wYear,
++                        time.wMonth,
++                        time.wDay,
++                        time.wHour,
++                        time.wMinute,
++                        time.wSecond,
++                        time.wMilliseconds,
++                        static_cast<unsigned long>(GetCurrentProcessId()),
++                        static_cast<unsigned long>(GetCurrentThreadId()),
++                        ExceptionName(exceptionCode),
++                        static_cast<unsigned long>(exceptionCode),
++                        static_cast<unsigned long>(exceptionAddress),
++                        static_cast<unsigned long>(moduleBase),
++                        static_cast<unsigned long>(exceptionRva));
++            WriteAll(hLog, text);
++
++            if (pRecord &&
++                ((exceptionCode == EXCEPTION_ACCESS_VIOLATION) ||
++                 (exceptionCode == EXCEPTION_IN_PAGE_ERROR)) &&
++                (pRecord->NumberParameters >= 2))
++            {
++                const char* operation = "unknown";
++                if (pRecord->ExceptionInformation[0] == 0)
++                    operation = "read";
++                else if (pRecord->ExceptionInformation[0] == 1)
++                    operation = "write";
++                else if (pRecord->ExceptionInformation[0] == 8)
++                    operation = "execute";
++
++                _snprintf_s(text,
++                            COUNT_OF(text),
++                            _TRUNCATE,
++                            "AccessType: %s\r\n"
++                            "AccessAddress: 0x%08lX\r\n",
++                            operation,
++                            static_cast<unsigned long>(pRecord->ExceptionInformation[1]));
++                WriteAll(hLog, text);
++            };
++
++#if defined(_M_IX86)
++            if (pContext)
++            {
++                _snprintf_s(text,
++                            COUNT_OF(text),
++                            _TRUNCATE,
++                            "EAX=%08lX EBX=%08lX ECX=%08lX EDX=%08lX\r\n"
++                            "ESI=%08lX EDI=%08lX EBP=%08lX ESP=%08lX\r\n"
++                            "EIP=%08lX EFLAGS=%08lX\r\n",
++                            static_cast<unsigned long>(pContext->Eax),
++                            static_cast<unsigned long>(pContext->Ebx),
++                            static_cast<unsigned long>(pContext->Ecx),
++                            static_cast<unsigned long>(pContext->Edx),
++                            static_cast<unsigned long>(pContext->Esi),
++                            static_cast<unsigned long>(pContext->Edi),
++                            static_cast<unsigned long>(pContext->Ebp),
++                            static_cast<unsigned long>(pContext->Esp),
++                            static_cast<unsigned long>(pContext->Eip),
++                            static_cast<unsigned long>(pContext->EFlags));
++                WriteAll(hLog, text);
++            };
++#endif /* _M_IX86 */
++
++            WriteAll(hLog,
++                     "Trace: see TMNT2_Slashuur_trace.log\r\n"
++                     "Dump: see the matching TMNT2_crash_*.dmp file\r\n");
++            CloseHandle(hLog);
++        };
++
++        WriteMiniDump(dumpPath, pException);
++        return EXCEPTION_EXECUTE_HANDLER;
++    };
++}; /* anonymous namespace */
++
++
++/*static*/ void CPCCrashReporter::Install(void)
++{
++    char path[MAX_PATH] = {};
++    BuildGamePath(path, COUNT_OF(path), "TMNT2_Slashuur_trace.log");
++
++    HANDLE hFile = CreateFileA(path,
++                               GENERIC_WRITE,
++                               FILE_SHARE_READ | FILE_SHARE_WRITE,
++                               nullptr,
++                               CREATE_ALWAYS,
++                               FILE_ATTRIBUTE_NORMAL,
++                               nullptr);
++    if (hFile != INVALID_HANDLE_VALUE)
++    {
++        WriteAll(hFile,
++                 "TMNT2 Playable Slashuur runtime trace\r\n"
++                 "Crash logger: version 1\r\n");
++        CloseHandle(hFile);
++    };
++
++    s_handlingCrash = 0;
++    s_pPreviousFilter = SetUnhandledExceptionFilter(CrashFilter);
++    Breadcrumb("SESSION crash reporter installed");
++};
++
++
++/*static*/ void CPCCrashReporter::Uninstall(void)
++{
++    Breadcrumb("SESSION normal shutdown");
++    SetUnhandledExceptionFilter(s_pPreviousFilter);
++    s_pPreviousFilter = nullptr;
++};
++
++
++/*static*/ void CPCCrashReporter::Breadcrumb(const char* format, ...)
++{
++    if (!format)
++        return;
++
++    SYSTEMTIME time = {};
++    GetLocalTime(&time);
++
++    char message[1536] = {};
++    va_list args;
++    va_start(args, format);
++    _vsnprintf_s(message, COUNT_OF(message), _TRUNCATE, format, args);
++    va_end(args);
++
++    char line[2048] = {};
++    _snprintf_s(line,
++                COUNT_OF(line),
++                _TRUNCATE,
++                "[%02u:%02u:%02u.%03u][thread %lu] %s\r\n",
++                time.wHour,
++                time.wMinute,
++                time.wSecond,
++                time.wMilliseconds,
++                static_cast<unsigned long>(GetCurrentThreadId()),
++                message);
++    AppendTraceText(line);
++};
++
++
++/*static*/ void CPCCrashReporter::FatalMessage(const char* message)
++{
++    Breadcrumb("FATAL %s", (message ? message : "(null)"));
++
++    char path[MAX_PATH] = {};
++    BuildTimestampedGamePath(path, COUNT_OF(path), "TMNT2_fatal", "log");
++
++    HANDLE hFile = CreateFileA(path,
++                               GENERIC_WRITE,
++                               FILE_SHARE_READ,
++                               nullptr,
++                               CREATE_ALWAYS,
++                               FILE_ATTRIBUTE_NORMAL,
++                               nullptr);
++    if (hFile != INVALID_HANDLE_VALUE)
++    {
++        WriteAll(hFile,
++                 "TMNT2 Playable Slashuur fatal report\r\n"
++                 "Trace: see TMNT2_Slashuur_trace.log\r\n"
++                 "Reason:\r\n");
++        WriteAll(hFile, (message ? message : "(null)"));
++        WriteAll(hFile, "\r\n");
++        CloseHandle(hFile);
++    };
++};
+diff --git a/src/System/PC/PCCrashReporter.hpp b/src/System/PC/PCCrashReporter.hpp
+new file mode 100644
+index 0000000..6e47761
+--- /dev/null
++++ b/src/System/PC/PCCrashReporter.hpp
+@@ -0,0 +1,11 @@
++#pragma once
++
++
++class CPCCrashReporter
++{
++public:
++    static void Install(void);
++    static void Uninstall(void);
++    static void Breadcrumb(const char* format, ...);
++    static void FatalMessage(const char* message);
++};
+diff --git a/src/System/PC/PCDebug.cpp b/src/System/PC/PCDebug.cpp
+index 84a52e2..0045b82 100644
+--- a/src/System/PC/PCDebug.cpp
++++ b/src/System/PC/PCDebug.cpp
+@@ -1,6 +1,7 @@
+ #include "PCDebug.hpp"
+ #include "PCSpecific.hpp"
+ #include "PCSystem.hpp"
++#include "PCCrashReporter.hpp"
+ 
+ #include "System/Common/SystemTime.hpp"
+ #include "System/Common/Debug.hpp"
+@@ -121,6 +122,8 @@ static void OutputCommon(bool ln, const char* fname, int32 fline, const char* fo
+     std::vsprintf(szFatalBuffer, reason, vl);
+     va_end(vl);
+ 
++    CPCCrashReporter::FatalMessage(szFatalBuffer);
++
+     uint32 Flags = (MB_ICONERROR);
+ #ifdef _DEBUG    
+     std::strcat(szFatalBuffer, "\n\nPress OK to execute debugbreak or CANCEL to terminate program.");
+@@ -156,4 +159,4 @@ static void OutputCommon(bool ln, const char* fname, int32 fline, const char* fo
+ /*static*/ void CPCDebug::SetFatalReturn(bool state)
+ {
+     SetOptFlag(PCDEBUG_FLAG_FATAL_RET, state);
+-};
+\ No newline at end of file
++};
+diff --git a/src/System/PC/main.cpp b/src/System/PC/main.cpp
+index 405c1bf..bb779c9 100644
+--- a/src/System/PC/main.cpp
++++ b/src/System/PC/main.cpp
+@@ -3,6 +3,7 @@
+ #include "PCSpecific.hpp"
+ #include "PCSetting.hpp"
+ #include "PCFramework.hpp"
++#include "PCCrashReporter.hpp"
+ 
+ #include "System/Common/Configure.hpp"
+ 
+@@ -22,6 +23,8 @@ _tWinMain(
+     _In_     int32		iCmdShow
+ )
+ {
++    CPCCrashReporter::Install();
++
+ #ifdef VLDCHECK    
+     VLDEnable();
+ #endif /* VLDCHECK */
+@@ -48,5 +51,6 @@ _tWinMain(
+     CPCDebug::Terminate();
+ #endif
+ 
++    CPCCrashReporter::Uninstall();
+     return (bResult ? EXIT_SUCCESS : EXIT_FAILURE);
+-};
+\ No newline at end of file
++};

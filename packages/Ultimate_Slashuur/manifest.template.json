@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "id": "Ultimate_Slashuur",
+  "displayName": "Ultimate Slashuur",
+  "version": "1.0.0",
+  "description": "Playable Slashuur with five boss moves and Adaptive Teleport v2. Does not enable MSAA, Intro Skip, widescreen, or difficulty modifications.",
+  "target": {
+    "game": "TMNT2_Battle_Nexus_PC",
+    "region": "US/NA",
+    "architecture": "x86",
+    "executableSha256": "b827478461e1687f9404679211fc2d2d47bd7222aeb81a8554bd793575a89564",
+    "archiveSha256": "cadae3cea3ad60a1f61acf4984f47adb15efccc880fe82c254b332196caa04b2"
+  },
+  "resources": [
+    { "id": "file:TMNT2.exe", "mode": "exclusive" },
+    { "id": "afs:TMNT.DAT:143", "mode": "exclusive" },
+    { "id": "feature:playable-slashuur", "mode": "exclusive" },
+    { "id": "exe:function:CSlashuur::OnTeleport", "mode": "exclusive" }
+  ],
+  "dependencies": [],
+  "conflicts": [],
+  "operations": [
+    {
+      "type": "apply-t2delta",
+      "target": "TMNT2.exe",
+      "payload": "payload/Ultimate_Slashuur.t2delta",
+      "payloadSha256": "6e576bb809b735e569d1b160bbcdda53d0fbbbbc30897fc69dc9af81f422389f",
+      "payloadSize": 1688501,
+      "expectedInputSha256": "b827478461e1687f9404679211fc2d2d47bd7222aeb81a8554bd793575a89564",
+      "expectedInputSize": 4796416,
+      "expectedOutputSha256": "c3a9d43ec34cac12b80cce808cce6808aa96d46df473b4b63b7743806afa0315",
+      "expectedOutputSize": 4641792
+    },
+    {
+      "type": "replace-afs-entry",
+      "target": "TMNT.DAT",
+      "payload": "payload/Ultimate_Slashuur.lpac",
+      "payloadSha256": "004b8a19dddffe6aeef991a96ea49c33a8ab97ee21a86f26f7eff6a554bbb7fc",
+      "payloadSize": 886656,
+      "entryId": 143,
+      "logicalPath": "player/slashuur/slashuur.lpac",
+      "expectedInputSha256": "e3f93aa1e63efefb403854a5eea603cc322a9de6b953de89292e804e76777451",
+      "expectedInputSize": 605632,
+      "expectedOutputSha256": "004b8a19dddffe6aeef991a96ea49c33a8ab97ee21a86f26f7eff6a554bbb7fc",
+      "expectedOutputSize": 886656
+    }
+  ]
+}

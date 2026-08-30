@@ -1,0 +1,185 @@
+From b287e42d718c4f52a852894b389d901e9517960f Mon Sep 17 00:00:00 2001
+From: Codex <codex@openai.com>
+Date: Sun, 30 Aug 2026 13:43:01 -0400
+Subject: [PATCH 07/11] Finalize standalone Slashuur controls
+
+---
+ .../ManipulatorSlashuur.cpp                   | 56 ++++++++++++++++++-
+ .../ManipulatorSlashuur.hpp                   |  2 +
+ .../ConcretePlayerCharacter/Slashuur.cpp      | 25 ++++++++-
+ .../ConcretePlayerCharacter/Slashuur.hpp      |  1 +
+ 4 files changed, 79 insertions(+), 5 deletions(-)
+
+diff --git a/src/Game/Component/Player/ConcreteManipulator/ManipulatorSlashuur.cpp b/src/Game/Component/Player/ConcreteManipulator/ManipulatorSlashuur.cpp
+index 7792bb2..2a6ecc9 100644
+--- a/src/Game/Component/Player/ConcreteManipulator/ManipulatorSlashuur.cpp
++++ b/src/Game/Component/Player/ConcreteManipulator/ManipulatorSlashuur.cpp
+@@ -13,6 +13,28 @@
+ 
+ namespace
+ {
++    static bool IsTeleportCancelStatus(PLAYERTYPES::STATUS status)
++    {
++        switch (status)
++        {
++        case PLAYERTYPES::STATUS_ATTACK_A:
++        case PLAYERTYPES::STATUS_ATTACK_AA:
++        case PLAYERTYPES::STATUS_ATTACK_AAB:
++        case PLAYERTYPES::STATUS_ATTACK_AAC:
++        case PLAYERTYPES::STATUS_ATTACK_AABB:
++        case PLAYERTYPES::STATUS_ATTACK_AABC:
++        case PLAYERTYPES::STATUS_ATTACK_AABBB:
++        case PLAYERTYPES::STATUS_ATTACK_AABBC:
++        case PLAYERTYPES::STATUS_ATTACK_B:
++        case PLAYERTYPES::STATUS_ATTACK_B_CHARGE:
++            return true;
++
++        default:
++            return false;
++        };
++    };
++
++
+     static const char* BossMoveName(Slashuur::STATUS status)
+     {
+         switch (status)
+@@ -41,6 +63,15 @@ CSlashuurManipulator::~CSlashuurManipulator(void)
+ };
+ 
+ 
++void CSlashuurManipulator::BranchForStatus(PLAYERTYPES::STATUS status)
++{
++    if (IsTeleportCancelStatus(status) && RunTeleportCancelChord())
++        return;
++
++    CManipulator::BranchForStatus(status);
++};
++
++
+ void CSlashuurManipulator::RunGrounding(void)
+ {
+     if (!RunBossMoveChord())
+@@ -62,6 +93,25 @@ void CSlashuurManipulator::RunGuard(void)
+ };
+ 
+ 
++bool CSlashuurManipulator::RunTeleportCancelChord(void)
++{
++    if ((m_input.m_guard != GUARD_ON) || (m_input.m_dash != DASH_ON))
++        return false;
++
++    if (m_input.m_move)
++        m_pPlayerChr->SetDirection(m_input.m_fDirection);
++
++    SLASHUUR_INPUT_TRACE("INPUT teleport cancel status=%d change begin",
++                         static_cast<int32>(m_pPlayerChr->GetStatus()));
++    PLAYERTYPES::STATUS result = m_pPlayerChr->ChangeStatus(
++        static_cast<PLAYERTYPES::STATUS>(Slashuur::STATUS_BOSS_TELEPORT)
++    );
++    SLASHUUR_INPUT_TRACE("INPUT teleport cancel change returned status=%d",
++                         static_cast<int32>(result));
++    return (result == static_cast<PLAYERTYPES::STATUS>(Slashuur::STATUS_BOSS_TELEPORT));
++};
++
++
+ bool CSlashuurManipulator::RunBossMoveChord(void)
+ {
+     if (m_input.m_guard != GUARD_ON)
+@@ -70,15 +120,15 @@ bool CSlashuurManipulator::RunBossMoveChord(void)
+     Slashuur::STATUS status = Slashuur::STATUS_BOSS_MAX;
+ 
+     if (m_input.m_attack == ATTACK_A)
+-        status = Slashuur::STATUS_BOSS_TELEPORT;
+-    else if ((m_input.m_attack == ATTACK_B) || (m_input.m_attack == ATTACK_C))
+         status = Slashuur::STATUS_BOSS_SCYTHE;
++    else if ((m_input.m_attack == ATTACK_B) || (m_input.m_attack == ATTACK_C))
++        status = Slashuur::STATUS_BOSS_DRAIN;
+     else if (m_input.m_jump == JUMP_ON)
+         status = Slashuur::STATUS_BOSS_GROUND_BLAST;
+     else if (m_input.m_knife == KNIFE_ON)
+         status = Slashuur::STATUS_BOSS_SHOT;
+     else if (m_input.m_dash == DASH_ON)
+-        status = Slashuur::STATUS_BOSS_DRAIN;
++        status = Slashuur::STATUS_BOSS_TELEPORT;
+ 
+     if (status == Slashuur::STATUS_BOSS_MAX)
+         return false;
+diff --git a/src/Game/Component/Player/ConcreteManipulator/ManipulatorSlashuur.hpp b/src/Game/Component/Player/ConcreteManipulator/ManipulatorSlashuur.hpp
+index bc5834e..9588f5d 100644
+--- a/src/Game/Component/Player/ConcreteManipulator/ManipulatorSlashuur.hpp
++++ b/src/Game/Component/Player/ConcreteManipulator/ManipulatorSlashuur.hpp
+@@ -8,10 +8,12 @@ class CSlashuurManipulator : public CManipulator
+ public:
+     CSlashuurManipulator(CPlayerCharacter* pPlayerChr, int32 nControllerNo);
+     virtual ~CSlashuurManipulator(void);
++    virtual void BranchForStatus(PLAYERTYPES::STATUS status) override;
+     virtual void RunGrounding(void) override;
+     virtual void RunGuardReady(void) override;
+     virtual void RunGuard(void) override;
+ 
+ private:
++    bool RunTeleportCancelChord(void);
+     bool RunBossMoveChord(void);
+ };
+diff --git a/src/Game/Component/Player/ConcretePlayerCharacter/Slashuur.cpp b/src/Game/Component/Player/ConcretePlayerCharacter/Slashuur.cpp
+index be81864..098fcc9 100644
+--- a/src/Game/Component/Player/ConcretePlayerCharacter/Slashuur.cpp
++++ b/src/Game/Component/Player/ConcretePlayerCharacter/Slashuur.cpp
+@@ -236,6 +236,29 @@ namespace Slashuur
+     };
+ 
+ 
++    bool CBossTeleport::IsEnableChangeStatus(PLAYERTYPES::STATUS status)
++    {
++        if (CBossMoveStatus::IsEnableChangeStatus(status))
++            return true;
++
++        PLAYERTYPES::STATUS aStatusArray[] =
++        {
++            PLAYERTYPES::STATUS_ATTACK_A,
++            PLAYERTYPES::STATUS_ATTACK_AA,
++            PLAYERTYPES::STATUS_ATTACK_AAB,
++            PLAYERTYPES::STATUS_ATTACK_AAC,
++            PLAYERTYPES::STATUS_ATTACK_AABB,
++            PLAYERTYPES::STATUS_ATTACK_AABC,
++            PLAYERTYPES::STATUS_ATTACK_AABBB,
++            PLAYERTYPES::STATUS_ATTACK_AABBC,
++            PLAYERTYPES::STATUS_ATTACK_B,
++            PLAYERTYPES::STATUS_ATTACK_B_CHARGE,
++        };
++
++        return IsWithinStatusFromArray(status, aStatusArray, COUNT_OF(aStatusArray));
++    };
++
++
+     void CBossTeleport::OnAttach(void)
+     {
+         SLASHUUR_TRACE("MOVE teleport attach begin");
+@@ -324,7 +347,6 @@ namespace Slashuur
+         m_step = 0;
+         m_fPulseTime = 0.2f;
+ 
+-        Character().SetAttribute(PLAYERTYPES::ATTRIBUTE_INVINCIBILITY);
+         Character().ResetVelocity();
+         Character().ResetAcceleration();
+         SLASHUUR_TRACE("MOVE scythe change motion=E2 begin");
+@@ -343,7 +365,6 @@ namespace Slashuur
+     void CBossScythe::OnDetach(void)
+     {
+         SLASHUUR_TRACE("MOVE scythe detach");
+-        Character().ClearAttribute(PLAYERTYPES::ATTRIBUTE_INVINCIBILITY);
+         CGameSound::FadeOutSE(SDCODE_SE(4403), CGameSound::FADESPEED_NORMAL);
+     };
+ 
+diff --git a/src/Game/Component/Player/ConcretePlayerCharacter/Slashuur.hpp b/src/Game/Component/Player/ConcretePlayerCharacter/Slashuur.hpp
+index e4d78d6..291039d 100644
+--- a/src/Game/Component/Player/ConcretePlayerCharacter/Slashuur.hpp
++++ b/src/Game/Component/Player/ConcretePlayerCharacter/Slashuur.hpp
+@@ -48,6 +48,7 @@ namespace Slashuur
+     class CBossTeleport : public CBossMoveStatus
+     {
+     public:
++        virtual bool IsEnableChangeStatus(PLAYERTYPES::STATUS status) override;
+         virtual void OnAttach(void) override;
+         virtual void OnDetach(void) override;
+         virtual void OnRun(void) override;

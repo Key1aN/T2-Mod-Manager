@@ -1,0 +1,22 @@
+From aa24183bf97935cb96153261c67de58207a00520 Mon Sep 17 00:00:00 2001
+From: Codex <codex@openai.com>
+Date: Sun, 30 Aug 2026 14:17:19 -0400
+Subject: [PATCH] Fix standalone workflow history checkout
+
+---
+ ...mmunity-mod-manager-v0.1-ultimate-slashuur-standalone-us.yml | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/.github/workflows/build-community-mod-manager-v0.1-ultimate-slashuur-standalone-us.yml b/.github/workflows/build-community-mod-manager-v0.1-ultimate-slashuur-standalone-us.yml
+index 2b488d8..d444013 100644
+--- a/.github/workflows/build-community-mod-manager-v0.1-ultimate-slashuur-standalone-us.yml
++++ b/.github/workflows/build-community-mod-manager-v0.1-ultimate-slashuur-standalone-us.yml
+@@ -17,6 +17,8 @@ jobs:
+     steps:
+       - name: Check out patched source
+         uses: actions/checkout@v4
++        with:
++          fetch-depth: 0
+ 
+       - name: Verify standalone source scope
+         shell: pwsh

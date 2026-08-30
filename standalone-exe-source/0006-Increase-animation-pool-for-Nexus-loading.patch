@@ -1,0 +1,32 @@
+From f86656f96b5c1c2ae242eb335d1d709e63a5111e Mon Sep 17 00:00:00 2001
+From: Key1aN <109429578+Key1aN@users.noreply.github.com>
+Date: Thu, 27 Aug 2026 09:53:49 +0330
+Subject: [PATCH 06/11] Increase animation pool for Nexus loading
+
+---
+ src/Game/System/Motion/MotionManager.cpp | 8 ++++++--
+ 1 file changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/src/Game/System/Motion/MotionManager.cpp b/src/Game/System/Motion/MotionManager.cpp
+index f369b3e..9f5786c 100644
+--- a/src/Game/System/Motion/MotionManager.cpp
++++ b/src/Game/System/Motion/MotionManager.cpp
+@@ -57,7 +57,12 @@ public:
+ 
+ private:
+     CHAnimationSet m_aHAnimationSet[16];
+-    CHAnimation m_aHAnimation[384];
++    /*
++     * Retail content fits narrowly inside 384 animation records. Character
++     * mods can add motions that remain resident while a stage transition
++     * streams the next package, so keep enough headroom for those additions.
++     */
++    CHAnimation m_aHAnimation[512];
+     CList<CHAnimationSet> m_listFreeSet;
+     CList<CHAnimationSet> m_listAllocSet;
+     CList<CHAnimation> m_listHAnimationPool;
+@@ -440,4 +445,3 @@ static inline CHAnimationContainer& AnimationContainer(void)
+ 
+     return nullptr;
+ };
+-
