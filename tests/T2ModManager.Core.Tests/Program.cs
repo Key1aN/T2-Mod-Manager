@@ -84,7 +84,7 @@ static void ConflictDetection()
     ModManifest first = Manifest("first", "afs:TMNT.DAT:143");
     ModManifest second = Manifest("second", "afs:TMNT.DAT:143");
     IReadOnlyList<ModConflict> conflicts = ConflictDetector.FindConflicts([first, second]);
-    Assert(conflicts.Count == 1 && conflicts[0].Resource == "afs:TMNT.DAT:143", "Exclusive conflict was not detected.");
+    Assert(conflicts.Count == 1 && conflicts[0].ResourceId == "afs:TMNT.DAT:143", "Exclusive conflict was not detected.");
 }
 
 static ModManifest Manifest(string id, string resource) => new()
