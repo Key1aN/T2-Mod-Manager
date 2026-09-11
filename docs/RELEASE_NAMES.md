@@ -46,3 +46,15 @@ application. MAP naming remains mandatory for future native TMNT2 EXE builds.
   `T2-Mod-Manager-Core-v0.1-Dynamic-Mod-List-US.pdb`
 - MAP: not produced; this is a managed .NET/WPF application rather than a
   native TMNT2 executable build.
+
+## Clean-first-run catalog build (cumulative)
+
+- Branch: `codex/t2-mod-manager-v0.1-clean-first-run-catalog`
+- Workflow: `build-t2-mod-manager-v0.1-clean-first-run-catalog`
+- Windows artifact:
+  `T2-Mod-Manager-v0.1-Clean-First-Run-Catalog-US-win-x64-run-<run-number>`
+- Application: `T2-Mod-Manager-v0.1-Clean-First-Run-Catalog-US.exe`
+- Symbols: `T2-Mod-Manager-v0.1-Clean-First-Run-Catalog-US.pdb` and
+  `T2-Mod-Manager-Core-v0.1-Clean-First-Run-Catalog-US.pdb`
+- MAP: not produced; this is a managed .NET/WPF application rather than a
+  native TMNT2 executable build.

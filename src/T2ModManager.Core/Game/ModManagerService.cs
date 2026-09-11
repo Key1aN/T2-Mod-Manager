@@ -28,6 +28,11 @@ public sealed class ModManagerService
     public async Task<InstalledState> GetStateAsync(CancellationToken cancellationToken = default)
     {
         InstalledState state = await _stateStore.LoadAsync(cancellationToken).ConfigureAwait(false);
+        if (StateMigration.PrepareModCatalog(state))
+        {
+            await _stateStore.SaveAsync(state, cancellationToken).ConfigureAwait(false);
+        }
+
         foreach (InstalledMod mod in state.Mods.Where(mod => string.IsNullOrWhiteSpace(mod.Description)))
         {
             mod.Description = TryReadInstalledDescription(mod);
@@ -125,6 +130,7 @@ public sealed class ModManagerService
             Active = false
         };
         state.Mods.Add(installed);
+        state.ModCatalogRevision = InstalledState.CurrentModCatalogRevision;
         await _stateStore.SaveAsync(state, cancellationToken).ConfigureAwait(false);
         return installed;
     }

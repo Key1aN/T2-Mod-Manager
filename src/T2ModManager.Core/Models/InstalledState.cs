@@ -2,7 +2,10 @@ namespace T2ModManager.Core.Models;
 
 public sealed class InstalledState
 {
+    public const int CurrentModCatalogRevision = 1;
+
     public int SchemaVersion { get; init; } = 1;
+    public int ModCatalogRevision { get; set; }
     public string? GameDirectory { get; set; }
     public string? GameBuildId { get; set; }
     public string? CurrentExecutableSha256 { get; set; }

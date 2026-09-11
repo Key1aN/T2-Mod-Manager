@@ -5,6 +5,7 @@ using T2ModManager.Core.Game;
 using T2ModManager.Core.Models;
 using T2ModManager.Core.Packages;
 using T2ModManager.Core.Patching;
+using T2ModManager.Core.State;
 using T2ModManager.Core.Validation;
 
 string root = Path.Combine(Path.GetTempPath(), $"cmm-tests-{Guid.NewGuid():N}");
@@ -20,6 +21,8 @@ try
     }
     GameDirectoryDetection(root);
     ManifestDescriptionValidation();
+    ModCatalogMigration();
+    await ModCatalogMigrationPersistenceAsync(root);
     LpacValidation(root);
     ConflictDetection();
     Console.WriteLine("All T2 Mod Manager v0.1 core tests passed.");
@@ -141,6 +144,65 @@ static void ManifestDescriptionValidation()
     AssertThrows<InvalidDataException>(
         () => ManifestSerializer.Validate(missingDescription),
         "A package without a meaningful description was accepted.");
+}
+
+static void ModCatalogMigration()
+{
+    InstalledState legacy = new();
+    legacy.Mods.Add(Installed("legacy-inactive", active: false));
+    legacy.Mods.Add(Installed("legacy-active", active: true));
+
+    Assert(StateMigration.PrepareModCatalog(legacy), "Legacy catalog migration did not run.");
+    Assert(
+        legacy.ModCatalogRevision == InstalledState.CurrentModCatalogRevision,
+        "Catalog migration revision was not recorded.");
+    Assert(
+        legacy.Mods.Count == 1 && legacy.Mods[0].Id == "legacy-active",
+        "Legacy inactive entries were not cleared safely.");
+
+    legacy.Mods.Add(Installed("new-import", active: false));
+    Assert(
+        !StateMigration.PrepareModCatalog(legacy),
+        "Catalog migration ran more than once.");
+    Assert(
+        legacy.Mods.Any(mod => mod.Id == "new-import"),
+        "A package imported after migration did not persist.");
+}
+
+static InstalledMod Installed(string id, bool active) => new()
+{
+    Id = id,
+    DisplayName = id,
+    Version = "1.0.0",
+    Description = "Test package description",
+    PackagePath = id + ".t2mod",
+    Active = active
+};
+
+static async Task ModCatalogMigrationPersistenceAsync(string root)
+{
+    string stateRoot = Path.Combine(root, "catalog-state");
+    AppDataPaths paths = new(stateRoot);
+    StateStore store = new(paths);
+    InstalledState legacy = new();
+    legacy.Mods.Add(Installed("legacy-inactive", active: false));
+    await store.SaveAsync(legacy);
+
+    ModManagerService service = new(stateRoot);
+    InstalledState migrated = await service.GetStateAsync();
+    Assert(migrated.Mods.Count == 0, "The first loaded Mods view was not empty.");
+
+    InstalledState persisted = await store.LoadAsync();
+    Assert(
+        persisted.ModCatalogRevision == InstalledState.CurrentModCatalogRevision,
+        "The catalog migration was not persisted.");
+
+    persisted.Mods.Add(Installed("new-import", active: false));
+    await store.SaveAsync(persisted);
+    InstalledState reloaded = await service.GetStateAsync();
+    Assert(
+        reloaded.Mods.Any(mod => mod.Id == "new-import"),
+        "An imported package was cleared after the one-time migration.");
 }
 
 static ModManifest Manifest(

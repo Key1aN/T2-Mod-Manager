@@ -36,6 +36,11 @@ hard-coded launcher content. Selecting a mod shows its package description,
 and its checkbox activates or deactivates it through the verified rebuild
 pipeline.
 
+The dynamic catalog performs a one-time migration from earlier launcher state:
+legacy inactive entries are removed without deleting stored packages or
+backups, so the first Mods view is empty until the user imports a package.
+Active legacy records are retained only when required for safe restoration.
+
 The first distributable package, `Ultimate_Slashuur.t2mod`, has been generated
 from the verified standalone EXE and final expanded 77-chunk LPAC. The package
 contains only the EXE delta, modded LPAC, and declarative manifest; it contains
