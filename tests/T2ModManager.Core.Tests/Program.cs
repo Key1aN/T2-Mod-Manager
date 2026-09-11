@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using T2ModManager.Core.Archives;
 using T2ModManager.Core.Conflict;
+using T2ModManager.Core.Game;
 using T2ModManager.Core.Models;
 using T2ModManager.Core.Patching;
 using T2ModManager.Core.Validation;
@@ -12,6 +13,7 @@ try
 {
     await DeltaRoundTripAsync(root);
     await AfsReplacementRoundTripAsync(root);
+    GameDirectoryDetection(root);
     LpacValidation(root);
     ConflictDetection();
     Console.WriteLine("All T2 Mod Manager v0.1 core tests passed.");
@@ -77,6 +79,26 @@ static void LpacValidation(string root)
     File.WriteAllBytes(path, bytes);
     LpacValidationResult result = LpacValidator.Validate(path);
     Assert(result.ChunkCount == 1 && result.Chunks[0].Name == "test", "LPAC metadata was parsed incorrectly.");
+}
+
+static void GameDirectoryDetection(string root)
+{
+    string arbitraryName = Path.Combine(root, "Any Game Folder Name");
+    Directory.CreateDirectory(arbitraryName);
+    File.WriteAllBytes(Path.Combine(arbitraryName, "TMNT2.exe"), [0x4D, 0x5A]);
+    File.WriteAllBytes(Path.Combine(arbitraryName, "TMNT.DAT"), "AFS\0"u8.ToArray());
+
+    Assert(
+        GameDirectoryLocator.ContainsRequiredFiles(arbitraryName),
+        "A game folder with an arbitrary directory name was rejected.");
+    Assert(
+        GameDirectoryLocator.PathsEqual(arbitraryName, arbitraryName + Path.DirectorySeparatorChar),
+        "Equivalent game directory paths were not normalized consistently.");
+
+    File.Delete(Path.Combine(arbitraryName, "TMNT.DAT"));
+    Assert(
+        !GameDirectoryLocator.ContainsRequiredFiles(arbitraryName),
+        "A folder missing TMNT.DAT was accepted.");
 }
 
 static void ConflictDetection()

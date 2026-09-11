@@ -12,7 +12,7 @@ public static class GameFingerprintService
         IProgress<OperationProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
-        if (!File.Exists(installation.ExecutablePath) || !File.Exists(installation.ArchivePath))
+        if (!GameDirectoryLocator.ContainsRequiredFiles(installation.RootDirectory))
         {
             throw new FileNotFoundException("The selected folder must contain TMNT2.exe and TMNT.DAT.");
         }

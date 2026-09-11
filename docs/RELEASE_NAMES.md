@@ -22,3 +22,15 @@
 
 A linker MAP is not produced because the manager is a managed .NET/WPF
 application. MAP naming remains mandatory for future native TMNT2 EXE builds.
+
+## Game-folder-selection fix build
+
+- Branch: `codex/t2-mod-manager-v0.1-game-folder-selection-fix`
+- Workflow: `build-t2-mod-manager-v0.1-game-folder-selection-fix`
+- Windows artifact:
+  `T2-Mod-Manager-v0.1-Game-Folder-Selection-Fix-US-win-x64-run-<run-number>`
+- Application: `T2-Mod-Manager-v0.1-Game-Folder-Selection-Fix-US.exe`
+- Symbols: `T2-Mod-Manager-v0.1-Game-Folder-Selection-Fix-US.pdb` and
+  `T2-Mod-Manager-Core-v0.1-Game-Folder-Selection-Fix-US.pdb`
+- MAP: not produced; this is a managed .NET/WPF application rather than a
+  native TMNT2 executable build.

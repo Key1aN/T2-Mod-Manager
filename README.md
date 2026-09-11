@@ -27,6 +27,10 @@ This source package contains the v0.1 architecture, UI, package validator,
 AFS/LPAC readers, block-delta implementation, backup/transaction engine,
 packager, and dependency/conflict model.
 
+The game-folder selector accepts any directory name containing `TMNT2.exe`
+and `TMNT.DAT`. A missing stale saved location is not displayed, and selecting
+a replacement verified installation is supported while all mods are inactive.
+
 The first distributable package, `Ultimate_Slashuur.t2mod`, has been generated
 from the verified standalone EXE and final expanded 77-chunk LPAC. The package
 contains only the EXE delta, modded LPAC, and declarative manifest; it contains

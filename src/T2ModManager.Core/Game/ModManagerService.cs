@@ -33,7 +33,7 @@ public sealed class ModManagerService
         IProgress<OperationProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
-        string fullPath = Path.GetFullPath(gameDirectory.Trim());
+        string fullPath = GameDirectoryLocator.Normalize(gameDirectory);
         GameInstallation installation = new(fullPath);
         await TransactionalFileInstaller.RecoverIfNeededAsync(
             installation,
@@ -44,10 +44,11 @@ public sealed class ModManagerService
 
         InstalledState state = await _stateStore.LoadAsync(cancellationToken).ConfigureAwait(false);
         if (state.GameDirectory is not null &&
-            !Path.GetFullPath(state.GameDirectory).Equals(fullPath, StringComparison.OrdinalIgnoreCase))
+            !GameDirectoryLocator.PathsEqual(state.GameDirectory, fullPath) &&
+            state.Mods.Any(mod => mod.Active))
         {
             throw new InvalidOperationException(
-                "v0.1 manages one game installation. Restore or disconnect the current installation first.");
+                "Deactivate all active mods before selecting a different game installation.");
         }
 
         GameFingerprint fingerprint = await GameFingerprintService.InspectAsync(

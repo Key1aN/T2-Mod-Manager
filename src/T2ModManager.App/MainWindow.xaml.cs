@@ -11,6 +11,7 @@ public partial class MainWindow : Window
     private readonly ModManagerService _service = new();
     private InstalledState _state = new();
     private string? _selectedGameDirectory;
+    private bool _initialStateLoaded;
     private bool _isBusy;
 
     public MainWindow()
@@ -23,9 +24,23 @@ public partial class MainWindow : Window
     private async Task RefreshAsync()
     {
         _state = await _service.GetStateAsync();
-        _selectedGameDirectory = _state.GameDirectory ?? _selectedGameDirectory;
+        if (!_initialStateLoaded)
+        {
+            _selectedGameDirectory = GameDirectoryLocator.ContainsRequiredFiles(_state.GameDirectory)
+                ? GameDirectoryLocator.Normalize(_state.GameDirectory!)
+                : null;
+            _initialStateLoaded = true;
+        }
+
+        UpdateInterface();
+    }
+
+    private void UpdateInterface()
+    {
         GamePathText.Text = _selectedGameDirectory ?? "No game folder selected";
-        bool initialized = !string.IsNullOrWhiteSpace(_state.GameDirectory);
+        bool initialized =
+            GameDirectoryLocator.ContainsRequiredFiles(_state.GameDirectory) &&
+            GameDirectoryLocator.PathsEqual(_state.GameDirectory, _selectedGameDirectory);
         InstalledMod? mod = _state.Mods.FirstOrDefault(item => item.Id == "Ultimate_Slashuur");
         ModStatusText.Text = mod is null ? "Not installed" : mod.Active ? "Active" : "Inactive";
         ModStatusBadge.Background = mod?.Active == true
@@ -49,16 +64,16 @@ public partial class MainWindow : Window
         if (dialog.ShowDialog(this) == true)
         {
             _selectedGameDirectory = dialog.FolderName;
-            GamePathText.Text = dialog.FolderName;
-            VerifyButton.IsEnabled = true;
+            UpdateInterface();
         }
     }
 
     private async void VerifyButton_Click(object sender, RoutedEventArgs e)
     {
-        if (_selectedGameDirectory is null) return;
+        string? selectedGameDirectory = _selectedGameDirectory;
+        if (selectedGameDirectory is null) return;
         await RunOperationAsync(progress =>
-            _service.InitializeGameAsync(_selectedGameDirectory, progress));
+            _service.InitializeGameAsync(selectedGameDirectory, progress));
     }
 
     private async void InstallPackageButton_Click(object sender, RoutedEventArgs e)
