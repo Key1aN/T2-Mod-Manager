@@ -3,6 +3,10 @@
 A `.t2mod` is a ZIP file with a UTF-8 `manifest.json` at its root. All other
 entries are inert payloads referenced by the manifest.
 
+Every manifest must provide a non-empty `displayName`, numeric dotted
+`version`, and non-empty `description`. The launcher uses these fields to build
+the mod list and selected-mod details without mod-specific UI code.
+
 Packages may not contain absolute paths, parent-directory traversal, device
 paths, symbolic links, or executable scripts. The manager reads only manifest-
 declared entries and never performs a general ZIP extraction.

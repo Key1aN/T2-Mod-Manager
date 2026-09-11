@@ -57,36 +57,128 @@
             <Border Background="{StaticResource PanelBrush}" CornerRadius="12"
                     BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" Padding="22"
                     Margin="0,0,12,0">
-                <StackPanel>
-                    <Grid>
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <StackPanel>
+                        <TextBlock Text="Mods" FontSize="21" FontWeight="Bold"/>
+                        <TextBlock Text="Select a mod to view its package description. Use its checkbox to activate or deactivate it."
+                                   Foreground="{StaticResource MutedBrush}" FontSize="12"
+                                   TextWrapping="Wrap" Margin="0,5,0,0"/>
+                    </StackPanel>
+
+                    <Grid Grid.Row="1" Margin="0,18,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="5*"/>
+                            <ColumnDefinition Width="7*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <Grid Margin="0,0,10,0">
+                            <ListBox x:Name="ModsList" SelectionMode="Single"
+                                     SelectionChanged="ModsList_SelectionChanged"
+                                     Background="#10141C" BorderBrush="{StaticResource BorderBrush}"
+                                     BorderThickness="1" Padding="4"
+                                     HorizontalContentAlignment="Stretch">
+                                <ListBox.ItemContainerStyle>
+                                    <Style TargetType="ListBoxItem">
+                                        <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+                                        <Setter Property="Background" Value="Transparent"/>
+                                        <Setter Property="Padding" Value="10,8"/>
+                                        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="ListBoxItem">
+                                                    <Border x:Name="ItemBorder" Background="{TemplateBinding Background}"
+                                                            CornerRadius="7" Padding="{TemplateBinding Padding}">
+                                                        <ContentPresenter/>
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter TargetName="ItemBorder" Property="Background" Value="#1B2130"/>
+                                                        </Trigger>
+                                                        <Trigger Property="IsSelected" Value="True">
+                                                            <Setter TargetName="ItemBorder" Property="Background" Value="#2B3343"/>
+                                                        </Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Style>
+                                </ListBox.ItemContainerStyle>
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <CheckBox IsChecked="{Binding Active, Mode=OneWay}"
+                                                      IsEnabled="{Binding CanToggle}"
+                                                      Click="ModActiveCheckBox_Click"
+                                                      VerticalAlignment="Center" Margin="0,0,10,0"
+                                                      ToolTip="Activate or deactivate this mod"/>
+                                            <StackPanel Grid.Column="1">
+                                                <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold"
+                                                           TextTrimming="CharacterEllipsis"/>
+                                                <TextBlock Text="{Binding VersionLabel}"
+                                                           Foreground="{StaticResource MutedBrush}"
+                                                           FontSize="11" Margin="0,3,0,0"/>
+                                            </StackPanel>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                            <TextBlock x:Name="NoModsText" Text="No mod packages added."
+                                       Foreground="{StaticResource MutedBrush}"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                                       IsHitTestVisible="False"/>
+                        </Grid>
+
+                        <Border Grid.Column="1" Background="#10141C" CornerRadius="8"
+                                BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                                Padding="16" Margin="10,0,0,0">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                          HorizontalScrollBarVisibility="Disabled">
+                                <StackPanel>
+                                    <TextBlock Text="Description" FontSize="14" FontWeight="SemiBold"/>
+                                    <TextBlock x:Name="SelectedModNameText" Text="No mod selected"
+                                               FontSize="18" FontWeight="Bold" Margin="0,14,0,0"
+                                               TextWrapping="Wrap"/>
+                                    <TextBlock x:Name="SelectedModVersionText"
+                                               Foreground="{StaticResource MutedBrush}" FontSize="11"
+                                               Margin="0,4,0,0" TextWrapping="Wrap"/>
+                                    <TextBlock x:Name="SelectedModDescriptionText"
+                                               Text="Select a mod from the list to view the description stored in its .t2mod package."
+                                               Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"
+                                               LineHeight="20" Margin="0,14,0,0"/>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Border>
+                    </Grid>
+
+                    <Separator Grid.Row="2" Margin="0,18" Background="{StaticResource BorderBrush}"/>
+
+                    <Grid Grid.Row="3">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
-                        <StackPanel>
-                            <TextBlock Text="Ultimate Slashuur" FontSize="21" FontWeight="Bold"/>
-                            <TextBlock Text="Package ID: Ultimate_Slashuur" Foreground="{StaticResource MutedBrush}"
-                                       FontSize="12" Margin="0,4,0,0"/>
+                        <StackPanel Margin="0,0,18,0">
+                            <TextBlock Text="Safe installation" FontWeight="SemiBold"/>
+                            <TextBlock Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"
+                                       FontSize="11" Margin="0,5,0,0"
+                                       Text="Every activation is rebuilt and verified from the vanilla backup before live files are replaced."/>
                         </StackPanel>
-                        <Border Grid.Column="1" x:Name="ModStatusBadge" Background="#343B4A"
-                                CornerRadius="12" Padding="12,5" VerticalAlignment="Top">
-                            <TextBlock x:Name="ModStatusText" Text="Not installed" FontWeight="SemiBold"/>
-                        </Border>
+                        <Button Grid.Column="1" x:Name="InstallPackageButton"
+                                Content="Add .t2mod Package" Click="InstallPackageButton_Click"
+                                VerticalAlignment="Center"/>
                     </Grid>
-                    <TextBlock Margin="0,20,0,0" Foreground="{StaticResource MutedBrush}"
-                               TextWrapping="Wrap" LineHeight="22"
-                               Text="Playable Slashuur with five boss moves and Adaptive Teleport v2. This standalone mod does not enable MSAA, Intro Skip, widescreen, or difficulty modifications."/>
-                    <Separator Margin="0,20" Background="{StaticResource BorderBrush}"/>
-                    <TextBlock Text="Safe installation" FontWeight="SemiBold" Margin="0,0,0,8"/>
-                    <TextBlock Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" LineHeight="21"
-                               Text="Every activation is rebuilt from the verified vanilla backup. TMNT2.exe, TMNT.DAT, and LPAC output hashes are checked before the live files are replaced."/>
-                    <StackPanel Orientation="Horizontal" Margin="0,24,0,0">
-                        <Button x:Name="InstallPackageButton" Content="Add .t2mod Package"
-                                Click="InstallPackageButton_Click" Margin="0,0,10,0"/>
-                        <Button x:Name="ToggleModButton" Content="Activate" Click="ToggleModButton_Click"
-                                Background="#2B3343" IsEnabled="False"/>
-                    </StackPanel>
-                </StackPanel>
+                </Grid>
             </Border>
 
             <Border Grid.Column="1" Background="{StaticResource PanelBrush}" CornerRadius="12"

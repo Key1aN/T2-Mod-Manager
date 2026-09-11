@@ -245,6 +245,7 @@ def validate_lpac(lpac: bytes) -> None:
 
 def zip_write(archive: zipfile.ZipFile, name: str, data: bytes, compression: int) -> None:
     info = zipfile.ZipInfo(name, ZIP_TIME)
+    info.create_system = 3
     info.compress_type = compression
     info.external_attr = 0o100644 << 16
     archive.writestr(info, data)
@@ -255,10 +256,15 @@ def build_manifest(delta: bytes, target: bytes, lpac: bytes) -> dict[str, object
         "schemaVersion": 1,
         "id": "Ultimate_Slashuur",
         "displayName": "Ultimate Slashuur",
-        "version": "1.0.0",
+        "version": "1.0.1",
         "description": (
-            "Playable Slashuur with five boss moves and Adaptive Teleport v2. "
-            "Does not enable MSAA, Intro Skip, widescreen, or difficulty modifications."
+            "Adds playable Slashuur with all five boss moves and Adaptive Teleport v2. "
+            "Teleport targets eligible nearby ground enemies within a 25-unit radius, "
+            "excludes flying enemies, preserves the original forward fallback, and "
+            "revalidates targets before use. Includes the established attack-cancel "
+            "rules while preserving hidden/collisionless invulnerability and all "
+            "existing visual effects. Does not enable MSAA, Intro Skip, widescreen, "
+            "or difficulty changes."
         ),
         "target": {
             "game": "TMNT2_Battle_Nexus_PC",

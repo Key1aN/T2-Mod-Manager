@@ -3,6 +3,10 @@
 This directory intentionally contains only a manifest template. The supplied
 final LPAC was validated on 2026-08-30:
 
+The package version is `1.0.1`. Its manifest description is the source of the
+text displayed by the launcher's dynamic mod list; no Slashuur name or feature
+description is hard-coded in the launcher UI.
+
 - Size: `886,656` bytes
 - LPAC chunks: `77`
 - SHA-256:

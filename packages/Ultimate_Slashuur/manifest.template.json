@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "id": "Ultimate_Slashuur",
   "displayName": "Ultimate Slashuur",
-  "version": "1.0.0",
-  "description": "Playable Slashuur with five boss moves and Adaptive Teleport v2. Does not enable MSAA, Intro Skip, widescreen, or difficulty modifications.",
+  "version": "1.0.1",
+  "description": "Adds playable Slashuur with all five boss moves and Adaptive Teleport v2. Teleport targets eligible nearby ground enemies within a 25-unit radius, excludes flying enemies, preserves the original forward fallback, and revalidates targets before use. Includes the established attack-cancel rules while preserving hidden/collisionless invulnerability and all existing visual effects. Does not enable MSAA, Intro Skip, widescreen, or difficulty changes.",
   "target": {
     "game": "TMNT2_Battle_Nexus_PC",
     "region": "US/NA",

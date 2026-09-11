@@ -3,6 +3,7 @@ using T2ModManager.Core.Archives;
 using T2ModManager.Core.Conflict;
 using T2ModManager.Core.Game;
 using T2ModManager.Core.Models;
+using T2ModManager.Core.Packages;
 using T2ModManager.Core.Patching;
 using T2ModManager.Core.Validation;
 
@@ -13,7 +14,12 @@ try
 {
     await DeltaRoundTripAsync(root);
     await AfsReplacementRoundTripAsync(root);
+    if (args.Length == 1)
+    {
+        await PackageValidationAsync(root, args[0]);
+    }
     GameDirectoryDetection(root);
+    ManifestDescriptionValidation();
     LpacValidation(root);
     ConflictDetection();
     Console.WriteLine("All T2 Mod Manager v0.1 core tests passed.");
@@ -81,6 +87,23 @@ static void LpacValidation(string root)
     Assert(result.ChunkCount == 1 && result.Chunks[0].Name == "test", "LPAC metadata was parsed incorrectly.");
 }
 
+static async Task PackageValidationAsync(string root, string packagePath)
+{
+    using T2ModPackage package = T2ModPackage.Open(packagePath);
+    Assert(
+        !string.IsNullOrWhiteSpace(package.Manifest.Description),
+        "The supplied package description is missing.");
+    Assert(
+        package.Manifest.Id == "Ultimate_Slashuur",
+        "The supplied package identity changed.");
+
+    foreach (ModOperation operation in package.Manifest.Operations)
+    {
+        string output = Path.Combine(root, Path.GetFileName(operation.Payload));
+        await package.ExtractVerifiedPayloadAsync(operation, output);
+    }
+}
+
 static void GameDirectoryDetection(string root)
 {
     string arbitraryName = Path.Combine(root, "Any Game Folder Name");
@@ -109,12 +132,27 @@ static void ConflictDetection()
     Assert(conflicts.Count == 1 && conflicts[0].ResourceId == "afs:TMNT.DAT:143", "Exclusive conflict was not detected.");
 }
 
-static ModManifest Manifest(string id, string resource) => new()
+static void ManifestDescriptionValidation()
+{
+    ModManifest missingDescription = Manifest(
+        "missing-description",
+        "feature:test-description",
+        description: "   ");
+    AssertThrows<InvalidDataException>(
+        () => ManifestSerializer.Validate(missingDescription),
+        "A package without a meaningful description was accepted.");
+}
+
+static ModManifest Manifest(
+    string id,
+    string resource,
+    string description = "Test package description") => new()
 {
     SchemaVersion = 1,
     Id = id,
     DisplayName = id,
     Version = "1.0.0",
+    Description = description,
     Target = new GameTarget
     {
         Game = "TMNT2: Battle Nexus",
@@ -125,6 +163,21 @@ static ModManifest Manifest(string id, string resource) => new()
     },
     Resources = [new ResourceClaim { Id = resource }]
 };
+
+static void AssertThrows<TException>(Action action, string message)
+    where TException : Exception
+{
+    try
+    {
+        action();
+    }
+    catch (TException)
+    {
+        return;
+    }
+
+    throw new InvalidOperationException(message);
+}
 
 static void CreateSyntheticAfs(string path, byte[] entry)
 {

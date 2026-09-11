@@ -25,8 +25,16 @@ public sealed class ModManagerService
         _backupService = new BackupService(_paths);
     }
 
-    public Task<InstalledState> GetStateAsync(CancellationToken cancellationToken = default) =>
-        _stateStore.LoadAsync(cancellationToken);
+    public async Task<InstalledState> GetStateAsync(CancellationToken cancellationToken = default)
+    {
+        InstalledState state = await _stateStore.LoadAsync(cancellationToken).ConfigureAwait(false);
+        foreach (InstalledMod mod in state.Mods.Where(mod => string.IsNullOrWhiteSpace(mod.Description)))
+        {
+            mod.Description = TryReadInstalledDescription(mod);
+        }
+
+        return state;
+    }
 
     public async Task InitializeGameAsync(
         string gameDirectory,
@@ -112,6 +120,7 @@ public sealed class ModManagerService
             Id = package.Manifest.Id,
             DisplayName = package.Manifest.DisplayName,
             Version = package.Manifest.Version,
+            Description = package.Manifest.Description,
             PackagePath = storedPath,
             Active = false
         };
@@ -432,6 +441,26 @@ public sealed class ModManagerService
     private static InstalledMod RequireInstalledMod(InstalledState state, string modId) =>
         state.Mods.FirstOrDefault(mod => mod.Id.Equals(modId, StringComparison.OrdinalIgnoreCase))
         ?? throw new InvalidOperationException($"Mod is not installed: {modId}");
+
+    private static string? TryReadInstalledDescription(InstalledMod mod)
+    {
+        try
+        {
+            using T2ModPackage package = T2ModPackage.Open(mod.PackagePath);
+            if (package.Manifest.Id.Equals(mod.Id, StringComparison.Ordinal) &&
+                package.Manifest.Version.Equals(mod.Version, StringComparison.Ordinal))
+            {
+                return package.Manifest.Description;
+            }
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            // Keep the launcher usable; activation performs full package validation.
+        }
+
+        return null;
+    }
 
     private async Task<InstalledState> RequireInitializedStateAsync(CancellationToken cancellationToken)
     {

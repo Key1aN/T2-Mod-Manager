@@ -1,11 +1,11 @@
-# Ultimate_Slashuur v1.0.0 build information
+# Ultimate_Slashuur v1.0.1 build information
 
 ## Package
 
 - Filename: `Ultimate_Slashuur.t2mod`
-- Size: `2,159,912` bytes
+- Size: `2,160,105` bytes
 - SHA-256:
-  `81f8e8113e1374353d2742073b89d9112ecfac743faa56fccf1fc05e063cf328`
+  `aaa5b733596823dc0ea0ce1d7a5f4ea01dd6c71e3a578395633de3e9fa6f6443`
 - Entries: `manifest.json`, `payload/Ultimate_Slashuur.t2delta`, and
   `payload/Ultimate_Slashuur.lpac`
 
@@ -32,3 +32,7 @@ The package was built twice independently with byte-identical results. The
 delta was applied back to the verified original US/NA executable and reproduced
 the standalone executable byte-for-byte. ZIP integrity and the three-entry
 allowlist were also verified.
+
+Version `1.0.1` changes only `manifest.json`: it adds the expanded description
+consumed by the launcher's dynamic mod list. The EXE delta and final LPAC bytes
+and hashes are unchanged from version `1.0.0`.

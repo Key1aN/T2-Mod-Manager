@@ -31,6 +31,11 @@ The game-folder selector accepts any directory name containing `TMNT2.exe`
 and `TMNT.DAT`. A missing stale saved location is not displayed, and selecting
 a replacement verified installation is supported while all mods are inactive.
 
+Installed mods are displayed from `.t2mod` manifest metadata rather than
+hard-coded launcher content. Selecting a mod shows its package description,
+and its checkbox activates or deactivates it through the verified rebuild
+pipeline.
+
 The first distributable package, `Ultimate_Slashuur.t2mod`, has been generated
 from the verified standalone EXE and final expanded 77-chunk LPAC. The package
 contains only the EXE delta, modded LPAC, and declarative manifest; it contains

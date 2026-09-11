@@ -48,6 +48,15 @@ public static partial class ManifestSerializer
             throw new InvalidDataException("The mod display name is invalid.");
         }
 
+        if (string.IsNullOrWhiteSpace(manifest.Description) ||
+            manifest.Description.Length > 2_000 ||
+            manifest.Description.Any(character =>
+                char.IsControl(character) && character is not '\r' and not '\n' and not '\t'))
+        {
+            throw new InvalidDataException(
+                "The mod description is required and must not exceed 2,000 characters.");
+        }
+
         if (!Version.TryParse(manifest.Version, out _))
         {
             throw new InvalidDataException("The mod version must use numeric dotted version syntax.");

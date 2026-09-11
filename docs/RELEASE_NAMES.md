@@ -34,3 +34,15 @@ application. MAP naming remains mandatory for future native TMNT2 EXE builds.
   `T2-Mod-Manager-Core-v0.1-Game-Folder-Selection-Fix-US.pdb`
 - MAP: not produced; this is a managed .NET/WPF application rather than a
   native TMNT2 executable build.
+
+## Dynamic-mod-list build (cumulative)
+
+- Branch: `codex/t2-mod-manager-v0.1-dynamic-mod-list`
+- Workflow: `build-t2-mod-manager-v0.1-dynamic-mod-list`
+- Windows artifact:
+  `T2-Mod-Manager-v0.1-Dynamic-Mod-List-US-win-x64-run-<run-number>`
+- Application: `T2-Mod-Manager-v0.1-Dynamic-Mod-List-US.exe`
+- Symbols: `T2-Mod-Manager-v0.1-Dynamic-Mod-List-US.pdb` and
+  `T2-Mod-Manager-Core-v0.1-Dynamic-Mod-List-US.pdb`
+- MAP: not produced; this is a managed .NET/WPF application rather than a
+  native TMNT2 executable build.
