@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "id": "Ultimate_Slashuur",
   "displayName": "Ultimate Slashuur",
-  "version": "1.0.1",
-  "description": "Adds playable Slashuur with all five boss moves and Adaptive Teleport v2. Teleport targets eligible nearby ground enemies within a 25-unit radius, excludes flying enemies, preserves the original forward fallback, and revalidates targets before use. Includes the established attack-cancel rules while preserving hidden/collisionless invulnerability and all existing visual effects. Does not enable MSAA, Intro Skip, widescreen, or difficulty changes.",
+  "version": "1.1.0",
+  "description": "Adds playable Slashuur with all five boss moves and Adaptive Teleport v2. Teleport targets eligible nearby ground enemies within a 25-unit radius, excludes flying enemies, preserves the original forward fallback, and revalidates targets before use. Includes the established attack-cancel rules while preserving hidden/collisionless invulnerability and all existing visual effects. Can be combined with Intro Skip, MSAA, New Difficulties, and Widescreen; those features remain off unless their own packages are checked.",
   "target": {
     "game": "TMNT2_Battle_Nexus_PC",
     "region": "US/NA",
@@ -12,24 +12,50 @@
     "archiveSha256": "cadae3cea3ad60a1f61acf4984f47adb15efccc880fe82c254b332196caa04b2"
   },
   "resources": [
-    { "id": "file:TMNT2.exe", "mode": "exclusive" },
-    { "id": "afs:TMNT.DAT:143", "mode": "exclusive" },
-    { "id": "feature:playable-slashuur", "mode": "exclusive" },
-    { "id": "exe:function:CSlashuur::OnTeleport", "mode": "exclusive" }
+    {
+      "id": "file:TMNT2.exe",
+      "mode": "exclusive"
+    },
+    {
+      "id": "afs:TMNT.DAT:143",
+      "mode": "exclusive"
+    },
+    {
+      "id": "feature:playable-slashuur",
+      "mode": "exclusive"
+    },
+    {
+      "id": "exe:function:CSlashuur::OnTeleport",
+      "mode": "exclusive"
+    }
   ],
   "dependencies": [],
   "conflicts": [],
+  "core": {
+    "id": "TMNT2_Composable_Core_v1_US",
+    "priority": 100,
+    "capabilities": [
+      "intro-skip",
+      "msaa",
+      "brutal-difficulties",
+      "widescreen",
+      "ultimate-slashuur"
+    ]
+  },
+  "featureFlags": [
+    "ultimate-slashuur"
+  ],
   "operations": [
     {
       "type": "apply-t2delta",
       "target": "TMNT2.exe",
       "payload": "payload/Ultimate_Slashuur.t2delta",
-      "payloadSha256": "6e576bb809b735e569d1b160bbcdda53d0fbbbbc30897fc69dc9af81f422389f",
-      "payloadSize": 1688501,
+      "payloadSha256": "043ee48d671311fdeb35224eef600b2d2fe06c2296ef181fcd4e14ba2e12f2a6",
+      "payloadSize": 1937271,
       "expectedInputSha256": "b827478461e1687f9404679211fc2d2d47bd7222aeb81a8554bd793575a89564",
       "expectedInputSize": 4796416,
-      "expectedOutputSha256": "c3a9d43ec34cac12b80cce808cce6808aa96d46df473b4b63b7743806afa0315",
-      "expectedOutputSize": 4641792
+      "expectedOutputSha256": "0f4cdc43718d99120e429816ec0ce0f3cc255f098b36d6f66df9d3bc6b10e3ff",
+      "expectedOutputSize": 4651008
     },
     {
       "type": "replace-afs-entry",

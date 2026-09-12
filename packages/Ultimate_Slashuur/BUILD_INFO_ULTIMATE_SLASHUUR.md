@@ -1,25 +1,25 @@
-# Ultimate_Slashuur v1.0.1 build information
+# Ultimate_Slashuur v1.1.0 composable build information
 
 ## Package
 
 - Filename: `Ultimate_Slashuur.t2mod`
-- Size: `2,160,105` bytes
+- Size: `2,414,955` bytes
 - SHA-256:
-  `aaa5b733596823dc0ea0ce1d7a5f4ea01dd6c71e3a578395633de3e9fa6f6443`
+  `5114e3613f2dc44e8ecac56ff47ee4c2529f6b815349fb2b8b6a3f4762634420`
 - Entries: `manifest.json`, `payload/Ultimate_Slashuur.t2delta`, and
   `payload/Ultimate_Slashuur.lpac`
 
-## Standalone EXE output
+## Slashuur composable core output
 
-- Size: `4,641,792` bytes
+- Size: `4,651,008` bytes
 - SHA-256:
-  `c3a9d43ec34cac12b80cce808cce6808aa96d46df473b4b63b7743806afa0315`
+  `0f4cdc43718d99120e429816ec0ce0f3cc255f098b36d6f66df9d3bc6b10e3ff`
 
 ## Executable delta
 
-- Size: `1,688,501` bytes
+- Size: `1,937,271` bytes
 - SHA-256:
-  `6e576bb809b735e569d1b160bbcdda53d0fbbbbc30897fc69dc9af81f422389f`
+  `043ee48d671311fdeb35224eef600b2d2fe06c2296ef181fcd4e14ba2e12f2a6`
 
 ## Final LPAC
 
@@ -28,11 +28,11 @@
 - SHA-256:
   `004b8a19dddffe6aeef991a96ea49c33a8ab97ee21a86f26f7eff6a554bbb7fc`
 
-The package was built twice independently with byte-identical results. The
-delta was applied back to the verified original US/NA executable and reproduced
-the standalone executable byte-for-byte. ZIP integrity and the three-entry
-allowlist were also verified.
+The manager's full integration path applied this package together with all four
+other composable packages, selected this priority-100 core, preserved the final
+LPAC replacement, then restored the retail EXE and DAT after deactivation. ZIP
+integrity and the three-entry allowlist were also verified.
 
-Version `1.0.1` changes only `manifest.json`: it adds the expanded description
-consumed by the launcher's dynamic mod list. The EXE delta and final LPAC bytes
-and hashes are unchanged from version `1.0.0`.
+Version `1.1.0` changes the EXE delta to the Slashuur-capable composable core
+and adds core capabilities plus the `ultimate-slashuur` feature flag. The final
+LPAC bytes and hash are unchanged from version `1.0.1`.
