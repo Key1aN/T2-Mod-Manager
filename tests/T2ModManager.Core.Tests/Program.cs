@@ -371,6 +371,20 @@ static void ManifestDescriptionValidation()
 
 static void ModCatalogMigration()
 {
+    InstalledState priorComposableRelease = new() { ModCatalogRevision = 1 };
+    priorComposableRelease.Mods.Add(Installed("intro-skip", active: false));
+    priorComposableRelease.Mods.Add(Installed("msaa", active: false));
+    priorComposableRelease.Mods.Add(Installed("difficulties", active: false));
+    priorComposableRelease.Mods.Add(Installed("slashuur", active: false));
+    priorComposableRelease.Mods.Add(Installed("widescreen", active: false));
+
+    Assert(
+        StateMigration.PrepareModCatalog(priorComposableRelease),
+        "The prior composable-release catalog reset did not run.");
+    Assert(
+        priorComposableRelease.Mods.Count == 0,
+        "Previously listed inactive packages were not cleared.");
+
     InstalledState legacy = new();
     legacy.Mods.Add(Installed("legacy-inactive", active: false));
     legacy.Mods.Add(Installed("legacy-active", active: true));
