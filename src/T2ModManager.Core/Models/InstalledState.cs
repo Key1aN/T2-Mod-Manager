@@ -10,6 +10,7 @@ public sealed class InstalledState
     public string? GameBuildId { get; set; }
     public string? CurrentExecutableSha256 { get; set; }
     public string? CurrentArchiveSha256 { get; set; }
+    public string? CurrentFeatureStateSha256 { get; set; }
     public List<InstalledMod> Mods { get; init; } = [];
     public DateTimeOffset UpdatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
 }

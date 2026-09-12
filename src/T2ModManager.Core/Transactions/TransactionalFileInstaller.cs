@@ -12,15 +12,19 @@ public static class TransactionalFileInstaller
         GameInstallation installation,
         string stagedExecutable,
         string stagedArchive,
+        string stagedFeatureState,
         string expectedExecutableHash,
         string expectedArchiveHash,
+        string expectedFeatureStateHash,
         IProgress<OperationProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
         RequireGameStopped();
-        if (!File.Exists(stagedExecutable) || !File.Exists(stagedArchive))
+        if (!File.Exists(stagedExecutable) ||
+            !File.Exists(stagedArchive) ||
+            !File.Exists(stagedFeatureState))
         {
-            throw new FileNotFoundException("Both staged game files must exist before commit.");
+            throw new FileNotFoundException("All staged manager files must exist before commit.");
         }
 
         Directory.CreateDirectory(installation.ManagerDirectory);
@@ -32,6 +36,9 @@ public static class TransactionalFileInstaller
         string rollbackArchive = Path.Combine(
             installation.RollbackDirectory,
             $"{transactionId}-TMNT.DAT");
+        string rollbackFeatureState = Path.Combine(
+            installation.RollbackDirectory,
+            $"{transactionId}-features.txt");
 
         TransactionJournal journal = new()
         {
@@ -39,10 +46,14 @@ public static class TransactionalFileInstaller
             GameDirectory = installation.RootDirectory,
             StagedExecutable = stagedExecutable,
             StagedArchive = stagedArchive,
+            StagedFeatureState = stagedFeatureState,
             RollbackExecutable = rollbackExecutable,
             RollbackArchive = rollbackArchive,
+            RollbackFeatureState = rollbackFeatureState,
             ExpectedExecutableSha256 = expectedExecutableHash,
             ExpectedArchiveSha256 = expectedArchiveHash,
+            ExpectedFeatureStateSha256 = expectedFeatureStateHash,
+            FeatureStatePreviouslyExisted = File.Exists(installation.FeatureStatePath),
             Phase = TransactionPhase.Prepared
         };
         await SaveJournalAsync(installation.JournalPath, journal, cancellationToken)
@@ -50,27 +61,48 @@ public static class TransactionalFileInstaller
 
         try
         {
-            progress?.Report(new OperationProgress("commit", "Installing TMNT2.exe…", 0.2));
+            progress?.Report(new OperationProgress("commit", "Installing the selected feature state…", 0.1));
+            if (journal.FeatureStatePreviouslyExisted)
+            {
+                File.Replace(
+                    stagedFeatureState,
+                    installation.FeatureStatePath,
+                    rollbackFeatureState,
+                    ignoreMetadataErrors: true);
+            }
+            else
+            {
+                File.Move(stagedFeatureState, installation.FeatureStatePath);
+            }
+            journal.Phase = TransactionPhase.FeatureStateCommitted;
+            await SaveJournalAsync(installation.JournalPath, journal, cancellationToken)
+                .ConfigureAwait(false);
+
+            progress?.Report(new OperationProgress("commit", "Installing TMNT2.exe…", 0.3));
             File.Replace(stagedExecutable, installation.ExecutablePath, rollbackExecutable, ignoreMetadataErrors: true);
             journal.Phase = TransactionPhase.ExeCommitted;
             await SaveJournalAsync(installation.JournalPath, journal, cancellationToken)
                 .ConfigureAwait(false);
 
-            progress?.Report(new OperationProgress("commit", "Installing TMNT.DAT…", 0.55));
+            progress?.Report(new OperationProgress("commit", "Installing TMNT.DAT…", 0.6));
             File.Replace(stagedArchive, installation.ArchivePath, rollbackArchive, ignoreMetadataErrors: true);
             journal.Phase = TransactionPhase.DatCommitted;
             await SaveJournalAsync(installation.JournalPath, journal, cancellationToken)
                 .ConfigureAwait(false);
 
-            progress?.Report(new OperationProgress("commit", "Verifying the installed files…", 0.75));
+            progress?.Report(new OperationProgress("commit", "Verifying the installed files…", 0.8));
             string executableHash = await Sha256Service.HashFileAsync(
                 installation.ExecutablePath,
                 cancellationToken).ConfigureAwait(false);
             string archiveHash = await Sha256Service.HashFileAsync(
                 installation.ArchivePath,
                 cancellationToken).ConfigureAwait(false);
+            string featureStateHash = await Sha256Service.HashFileAsync(
+                installation.FeatureStatePath,
+                cancellationToken).ConfigureAwait(false);
             if (!Sha256Service.EqualsHash(executableHash, expectedExecutableHash) ||
-                !Sha256Service.EqualsHash(archiveHash, expectedArchiveHash))
+                !Sha256Service.EqualsHash(archiveHash, expectedArchiveHash) ||
+                !Sha256Service.EqualsHash(featureStateHash, expectedFeatureStateHash))
             {
                 throw new InvalidDataException("Installed file verification failed; rollback is required.");
             }
@@ -115,6 +147,7 @@ public static class TransactionalFileInstaller
         {
             DeleteIfExists(journal.StagedExecutable);
             DeleteIfExists(journal.StagedArchive);
+            DeleteIfExists(journal.StagedFeatureState);
             File.Delete(installation.JournalPath);
             return;
         }
@@ -146,6 +179,8 @@ public static class TransactionalFileInstaller
         DeleteIfExists(journal.RollbackArchive);
         DeleteIfExists(journal.StagedExecutable);
         DeleteIfExists(journal.StagedArchive);
+        DeleteIfExists(journal.StagedFeatureState);
+        DeleteIfExists(journal.RollbackFeatureState);
         File.Delete(installation.JournalPath);
     }
 
@@ -165,6 +200,26 @@ public static class TransactionalFileInstaller
         if (File.Exists(journal.RollbackExecutable))
         {
             File.Replace(journal.RollbackExecutable, installation.ExecutablePath, null, ignoreMetadataErrors: true);
+        }
+
+        if (File.Exists(journal.RollbackFeatureState))
+        {
+            if (File.Exists(installation.FeatureStatePath))
+            {
+                File.Replace(
+                    journal.RollbackFeatureState,
+                    installation.FeatureStatePath,
+                    null,
+                    ignoreMetadataErrors: true);
+            }
+            else
+            {
+                File.Move(journal.RollbackFeatureState, installation.FeatureStatePath);
+            }
+        }
+        else if (journal.SchemaVersion >= 2 && !journal.FeatureStatePreviouslyExisted)
+        {
+            DeleteIfExists(installation.FeatureStatePath);
         }
 
         journal.Phase = TransactionPhase.RolledBack;
@@ -224,7 +279,7 @@ public static class TransactionalFileInstaller
             ManifestSerializer.JsonOptions,
             cancellationToken).ConfigureAwait(false)
             ?? throw new InvalidDataException("Transaction journal is empty.");
-        if (journal.SchemaVersion != 1)
+        if (journal.SchemaVersion is not 1 and not 2)
         {
             throw new InvalidDataException("Unsupported transaction journal version.");
         }
@@ -232,9 +287,9 @@ public static class TransactionalFileInstaller
         return journal;
     }
 
-    private static void DeleteIfExists(string path)
+    private static void DeleteIfExists(string? path)
     {
-        if (File.Exists(path))
+        if (!string.IsNullOrWhiteSpace(path) && File.Exists(path))
         {
             File.Delete(path);
         }

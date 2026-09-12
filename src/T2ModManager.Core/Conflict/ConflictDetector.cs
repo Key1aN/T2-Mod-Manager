@@ -37,6 +37,14 @@ public static class ConflictDetector
                 {
                     if (firstExclusive.Contains(resource))
                     {
+                        if (resource.Equals("file:TMNT2.exe", StringComparison.OrdinalIgnoreCase) &&
+                            first.Core is not null &&
+                            second.Core is not null &&
+                            first.Core.Id.Equals(second.Core.Id, StringComparison.OrdinalIgnoreCase))
+                        {
+                            continue;
+                        }
+
                         conflicts.Add(new ModConflict(
                             first.Id,
                             second.Id,

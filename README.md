@@ -1,11 +1,11 @@
 # T2 Mod Manager
 
-T2 Mod Manager v0.1 is a safety-first mod manager for the US/NA
+T2 Mod Manager v0.2 is a safety-first mod manager for the US/NA
 32-bit PC release of *TMNT 2: Battle Nexus*.
 
-The first supported mod is named exactly `Ultimate_Slashuur`. It is intended
-to install playable Slashuur with Adaptive Teleport v2 without enabling MSAA,
-Intro Skip, widescreen, or difficulty modifications.
+Compatible `.t2mod` packages can be checked together. The initial composable
+set contains Ultimate Slashuur, Intro Skip, MSAA Frame State Lock v4, the final
+three brutal difficulties, and Hor+ widescreen with stretched original UI.
 
 ## Safety model
 
@@ -18,12 +18,14 @@ Intro Skip, widescreen, or difficulty modifications.
 - A transaction journal records multi-file installation progress and supports
   rollback after a failure.
 - Mod packages are declarative ZIP containers. They cannot execute scripts.
-- Resource claims allow file, archive-entry, LPAC, and EXE-code conflicts to be
-  detected before any write begins.
+- Compatible EXE mods resolve to one verified runtime-gated T2 Core; resource
+  claims still block real file, archive-entry, LPAC, and EXE-code conflicts.
+- Selected feature flags are installed and recovered in the same transaction
+  as the EXE and DAT.
 
 ## Current state
 
-This source package contains the v0.1 architecture, UI, package validator,
+This source package contains the v0.2 architecture, UI, package validator,
 AFS/LPAC readers, block-delta implementation, backup/transaction engine,
 packager, and dependency/conflict model.
 
@@ -33,19 +35,19 @@ a replacement verified installation is supported while all mods are inactive.
 
 Installed mods are displayed from `.t2mod` manifest metadata rather than
 hard-coded launcher content. Selecting a mod shows its package description,
-and its checkbox activates or deactivates it through the verified rebuild
-pipeline.
+and checkboxes activate or deactivate compatible mods together through the
+verified rebuild pipeline.
 
 The dynamic catalog performs a one-time migration from earlier launcher state:
 legacy inactive entries are removed without deleting stored packages or
 backups, so the first Mods view is empty until the user imports a package.
 Active legacy records are retained only when required for safe restoration.
 
-The first distributable package, `Ultimate_Slashuur.t2mod`, has been generated
-from the verified standalone EXE and final expanded 77-chunk LPAC. The package
-contains only the EXE delta, modded LPAC, and declarative manifest; it contains
-no original retail EXE or DAT archive. The source repository itself does not
-contain the LPAC payload.
+Composable packages contain a delta from the verified retail EXE to a shared
+core plus declarative core capabilities and feature flags. Ultimate Slashuur
+also contains the existing final expanded 77-chunk LPAC. No package contains
+the original retail EXE or DAT archive, and this repository contains no retail
+payload.
 
 ## Build
 
@@ -62,7 +64,7 @@ dotnet publish src/T2ModManager.App/T2ModManager.App.csproj `
 ```
 
 The GitHub Actions workflow publishes a self-contained, single-file Windows
-build named `T2-Mod-Manager.exe`.
+build named `T2-Mod-Manager-v0.2-Composable-Mods-US.exe`.
 
 ## First supported retail fingerprint
 
@@ -73,7 +75,7 @@ build named `T2-Mod-Manager.exe`.
 
 See `docs/ORIGINAL_US_FINGERPRINTS.md` for the archive-entry fingerprint.
 See `docs/RELEASE_NAMES.md` for the unique branch, workflow, artifact, binary,
-symbol, and package names reserved for v0.1.
+symbol, and package names reserved for the cumulative releases.
 
 ## Public-release rule
 

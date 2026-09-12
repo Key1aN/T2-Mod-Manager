@@ -101,6 +101,8 @@ public static partial class ManifestSerializer
             }
         }
 
+        ValidateComposableCore(manifest);
+
         if (manifest.Operations.Count == 0)
         {
             throw new InvalidDataException("A mod package must contain at least one operation.");
@@ -109,6 +111,57 @@ public static partial class ManifestSerializer
         foreach (ModOperation operation in manifest.Operations)
         {
             ValidateOperation(operation, resourceIds);
+        }
+    }
+
+    private static void ValidateComposableCore(ModManifest manifest)
+    {
+        if (manifest.Core is null)
+        {
+            if (manifest.FeatureFlags.Count != 0)
+            {
+                throw new InvalidDataException(
+                    "Feature flags require composable core metadata.");
+            }
+            return;
+        }
+
+        ValidateIdentifier(manifest.Core.Id, "composable core ID");
+        if (manifest.Core.Priority is < 0 or > 1_000)
+        {
+            throw new InvalidDataException("Composable core priority is outside the supported range.");
+        }
+        if (manifest.Core.Capabilities.Count is < 1 or > 32 ||
+            manifest.FeatureFlags.Count is < 1 or > 32)
+        {
+            throw new InvalidDataException("Composable core capabilities or feature flags are invalid.");
+        }
+
+        HashSet<string> capabilities = new(StringComparer.OrdinalIgnoreCase);
+        foreach (string capability in manifest.Core.Capabilities)
+        {
+            ValidateIdentifier(capability, "core capability");
+            if (!capabilities.Add(capability))
+            {
+                throw new InvalidDataException($"Duplicate core capability: {capability}");
+            }
+        }
+
+        HashSet<string> flags = new(StringComparer.OrdinalIgnoreCase);
+        foreach (string flag in manifest.FeatureFlags)
+        {
+            ValidateIdentifier(flag, "feature flag");
+            if (!flags.Add(flag) || !capabilities.Contains(flag))
+            {
+                throw new InvalidDataException(
+                    $"Feature flag is duplicated or unsupported by the declared core: {flag}");
+            }
+        }
+
+        if (manifest.Operations.Count(operation => operation.Type == "apply-t2delta") != 1)
+        {
+            throw new InvalidDataException(
+                "A composable package must contain exactly one T2 Core EXE delta.");
         }
     }
 

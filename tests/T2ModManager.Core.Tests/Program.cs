@@ -29,7 +29,19 @@ try
     }
     if (integrationGameDirectory is not null)
     {
-        await ExeOnlyPackageIntegrationAsync(root, integrationGameDirectory, packagePaths);
+        bool allComposable = packagePaths.Count > 0 && packagePaths.All(path =>
+        {
+            using T2ModPackage package = T2ModPackage.Open(path);
+            return package.Manifest.Core is not null;
+        });
+        if (allComposable)
+        {
+            await ComposablePackageIntegrationAsync(root, integrationGameDirectory, packagePaths);
+        }
+        else
+        {
+            await ExeOnlyPackageIntegrationAsync(root, integrationGameDirectory, packagePaths);
+        }
     }
     GameDirectoryDetection(root);
     ManifestDescriptionValidation();
@@ -37,7 +49,8 @@ try
     await ModCatalogMigrationPersistenceAsync(root);
     LpacValidation(root);
     ConflictDetection();
-    Console.WriteLine("All T2 Mod Manager v0.1 core tests passed.");
+    ComposableManifestValidation();
+    Console.WriteLine("All T2 Mod Manager v0.2 composable-mod core tests passed.");
     return 0;
 }
 catch (Exception exception)
@@ -146,6 +159,126 @@ static async Task ExeOnlyPackageIntegrationAsync(
     }
 }
 
+static async Task ComposablePackageIntegrationAsync(
+    string root,
+    string sourceGameDirectory,
+    IReadOnlyList<string> packagePaths)
+{
+    string gameDirectory = Path.Combine(root, "composable-integration-game");
+    Directory.CreateDirectory(gameDirectory);
+    string gameExe = Path.Combine(gameDirectory, "TMNT2.exe");
+    string gameDat = Path.Combine(gameDirectory, "TMNT.DAT");
+    File.Copy(Path.Combine(sourceGameDirectory, "TMNT2.exe"), gameExe);
+    File.Copy(Path.Combine(sourceGameDirectory, "TMNT.DAT"), gameDat);
+
+    List<ModManifest> manifests = [];
+    foreach (string packagePath in packagePaths)
+    {
+        using T2ModPackage package = T2ModPackage.Open(packagePath);
+        manifests.Add(package.Manifest);
+    }
+
+    Assert(
+        ConflictDetector.FindConflicts(manifests).Count == 0,
+        "Compatible composable packages were reported as conflicting.");
+
+    ModManagerService service = new(Path.Combine(root, "composable-integration-appdata"));
+    await service.InitializeGameAsync(gameDirectory);
+    foreach (string packagePath in packagePaths)
+    {
+        _ = await service.InstallPackageAsync(packagePath);
+    }
+
+    List<string> activeIds = [];
+    foreach (ModManifest manifest in manifests)
+    {
+        await service.ActivateAsync(manifest.Id);
+        activeIds.Add(manifest.Id);
+        await VerifyComposableStateAsync(service, gameExe, gameDat, activeIds, manifests);
+    }
+
+    for (int index = activeIds.Count - 1; index >= 0; --index)
+    {
+        string id = activeIds[index];
+        await service.DeactivateAsync(id);
+        activeIds.RemoveAt(index);
+        await VerifyComposableStateAsync(service, gameExe, gameDat, activeIds, manifests);
+    }
+}
+
+static async Task VerifyComposableStateAsync(
+    ModManagerService service,
+    string gameExe,
+    string gameDat,
+    IReadOnlyCollection<string> activeIds,
+    IReadOnlyList<ModManifest> manifests)
+{
+    KnownGameBuild known = KnownGameBuilds.UsNaRetail;
+    List<ModManifest> active = manifests
+        .Where(manifest => activeIds.Contains(manifest.Id, StringComparer.OrdinalIgnoreCase))
+        .ToList();
+    InstalledState state = await service.GetStateAsync();
+    Assert(
+        state.Mods.Where(mod => mod.Active).Select(mod => mod.Id)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase)
+            .SetEquals(activeIds),
+        "The active package catalog does not match the requested composable set.");
+
+    if (active.Count == 0)
+    {
+        Assert(
+            Sha256Service.EqualsHash(await Sha256Service.HashFileAsync(gameExe), known.ExecutableSha256),
+            "Removing the final composable mod did not restore the retail executable.");
+    }
+    else
+    {
+        IReadOnlyList<string> flags = ComposableFeatureState.CollectFlags(active);
+        ModManifest selectedCore = active
+            .Where(manifest => flags.All(flag => manifest.Core!.Capabilities.Contains(
+                flag,
+                StringComparer.OrdinalIgnoreCase)))
+            .OrderByDescending(manifest => manifest.Core!.Priority)
+            .ThenBy(manifest => manifest.Operations.Single(operation =>
+                operation.Type == "apply-t2delta").ExpectedOutputSha256,
+                StringComparer.OrdinalIgnoreCase)
+            .First();
+        string expectedExeHash = selectedCore.Operations.Single(operation =>
+            operation.Type == "apply-t2delta").ExpectedOutputSha256!;
+        Assert(
+            Sha256Service.EqualsHash(await Sha256Service.HashFileAsync(gameExe), expectedExeHash),
+            "The launcher did not select the expected composable core executable.");
+    }
+
+    string featureStatePath = Path.Combine(Path.GetDirectoryName(gameExe)!, ".t2-mod-manager", "features.txt");
+    string? coreId = active.Count == 0 ? null : active[0].Core!.Id;
+    byte[] expectedFeatureState = ComposableFeatureState.Serialize(
+        coreId,
+        ComposableFeatureState.CollectFlags(active));
+    Assert(
+        (await File.ReadAllBytesAsync(featureStatePath)).SequenceEqual(expectedFeatureState),
+        "The installed composable feature-state file is incorrect.");
+
+    ModOperation? replacement = active
+        .SelectMany(manifest => manifest.Operations)
+        .SingleOrDefault(operation => operation.Type == "replace-afs-entry");
+    if (replacement is null)
+    {
+        Assert(
+            Sha256Service.EqualsHash(await Sha256Service.HashFileAsync(gameDat), known.ArchiveSha256),
+            "An EXE-only composable combination changed TMNT.DAT.");
+    }
+    else
+    {
+        AfsArchiveInfo archive = AfsArchive.Read(gameDat);
+        AfsEntry entry = archive.Entries[replacement.EntryId!.Value];
+        string hash = await Sha256Service.HashRangeAsync(gameDat, entry.Offset, entry.Size);
+        Assert(
+            entry.Size == replacement.ExpectedOutputSize &&
+            Sha256Service.EqualsHash(hash, replacement.ExpectedOutputSha256!),
+            "The composable archive replacement was not preserved.");
+    }
+}
+
 static async Task PackageValidationAsync(string root, string packagePath)
 {
     using T2ModPackage package = T2ModPackage.Open(packagePath);
@@ -189,6 +322,40 @@ static void ConflictDetection()
     ModManifest second = Manifest("second", "afs:TMNT.DAT:143");
     IReadOnlyList<ModConflict> conflicts = ConflictDetector.FindConflicts([first, second]);
     Assert(conflicts.Count == 1 && conflicts[0].ResourceId == "afs:TMNT.DAT:143", "Exclusive conflict was not detected.");
+
+    ModManifest composableFirst = ComposableManifest("composable-first", "shared-core", "intro-skip");
+    ModManifest composableSecond = ComposableManifest("composable-second", "shared-core", "msaa");
+    Assert(
+        ConflictDetector.FindConflicts([composableFirst, composableSecond]).Count == 0,
+        "Packages in the same composable core family conflicted on TMNT2.exe.");
+
+    ModManifest otherCore = ComposableManifest("other-core", "different-core", "widescreen");
+    Assert(
+        ConflictDetector.FindConflicts([composableFirst, otherCore]).Any(conflict =>
+            conflict.ResourceId.Equals("file:TMNT2.exe", StringComparison.OrdinalIgnoreCase)),
+        "Packages from different core families did not conflict on TMNT2.exe.");
+}
+
+static void ComposableManifestValidation()
+{
+    ModManifest manifest = ComposableManifest("valid-composable", "shared-core", "intro-skip");
+    ManifestSerializer.Validate(manifest);
+
+    ModManifest invalidFlag = ComposableManifest("invalid-flag", "shared-core", "intro-skip");
+    invalidFlag.Core!.Capabilities.Clear();
+    invalidFlag.Core.Capabilities.Add("msaa");
+    AssertThrows<InvalidDataException>(
+        () => ManifestSerializer.Validate(invalidFlag),
+        "A feature flag absent from core capabilities was accepted.");
+
+    byte[] serialized = ComposableFeatureState.Serialize(
+        "shared-core",
+        ["widescreen", "intro-skip"]);
+    string text = System.Text.Encoding.UTF8.GetString(serialized);
+    Assert(
+        text.IndexOf("feature=intro-skip", StringComparison.Ordinal) <
+        text.IndexOf("feature=widescreen", StringComparison.Ordinal),
+        "Composable feature flags were not serialized deterministically.");
 }
 
 static void ManifestDescriptionValidation()
@@ -280,6 +447,50 @@ static ModManifest Manifest(
         ArchiveSha256 = new('1', 64)
     },
     Resources = [new ResourceClaim { Id = resource }]
+};
+
+static ModManifest ComposableManifest(string id, string coreId, string featureFlag) => new()
+{
+    SchemaVersion = 1,
+    Id = id,
+    DisplayName = id,
+    Version = "2.0.0",
+    Description = "Composable test package",
+    Target = new GameTarget
+    {
+        Game = "TMNT2_Battle_Nexus_PC",
+        Region = "US/NA",
+        Architecture = "x86",
+        ExecutableSha256 = new('0', 64),
+        ArchiveSha256 = new('1', 64)
+    },
+    Core = new ComposableCore
+    {
+        Id = coreId,
+        Priority = 10,
+        Capabilities = ["intro-skip", "msaa", "widescreen"]
+    },
+    FeatureFlags = [featureFlag],
+    Resources =
+    [
+        new ResourceClaim { Id = "file:TMNT2.exe" },
+        new ResourceClaim { Id = $"feature:{id}" }
+    ],
+    Operations =
+    [
+        new ModOperation
+        {
+            Type = "apply-t2delta",
+            Target = "TMNT2.exe",
+            Payload = $"payload/{id}.t2delta",
+            PayloadSha256 = new('2', 64),
+            PayloadSize = 1,
+            ExpectedInputSha256 = new('0', 64),
+            ExpectedInputSize = 1,
+            ExpectedOutputSha256 = new('3', 64),
+            ExpectedOutputSize = 1
+        }
+    ]
 };
 
 static void AssertThrows<TException>(Action action, string message)

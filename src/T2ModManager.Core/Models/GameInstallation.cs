@@ -8,6 +8,7 @@ public sealed record GameInstallation(string RootDirectory)
     public string StagingDirectory => Path.Combine(ManagerDirectory, "staging");
     public string RollbackDirectory => Path.Combine(ManagerDirectory, "rollback");
     public string JournalPath => Path.Combine(ManagerDirectory, "transaction.json");
+    public string FeatureStatePath => Path.Combine(ManagerDirectory, "features.txt");
 }
 
 public sealed record GameFingerprint(

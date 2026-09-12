@@ -47,7 +47,34 @@ internal static class ProgramMain
                         RequireOption(options, "--version"),
                         RequireOption(options, "--description"),
                         RequireOption(options, "--feature-resource"),
-                        RequireOption(options, "--output")).ConfigureAwait(false);
+                        RequireOption(options, "--output"),
+                        composable: null).ConfigureAwait(false);
+                    break;
+
+                case "pack-composable-exe":
+                    await PackExeOnlyAsync(
+                        RequireOption(options, "--original-exe"),
+                        RequireOption(options, "--core-exe"),
+                        RequireOption(options, "--original-dat"),
+                        RequireOption(options, "--id"),
+                        RequireOption(options, "--display-name"),
+                        RequireOption(options, "--version"),
+                        RequireOption(options, "--description"),
+                        RequireOption(options, "--feature-resource"),
+                        RequireOption(options, "--output"),
+                        ParseComposableDefinition(options)).ConfigureAwait(false);
+                    break;
+
+                case "pack-composable-ultimate-slashuur":
+                    await PackUltimateSlashuurAsync(
+                        RequireOption(options, "--original-exe"),
+                        RequireOption(options, "--core-exe"),
+                        RequireOption(options, "--original-dat"),
+                        RequireOption(options, "--slashuur-lpac"),
+                        RequireOption(options, "--output"),
+                        RequireOption(options, "--version"),
+                        RequireOption(options, "--description"),
+                        ParseComposableDefinition(options)).ConfigureAwait(false);
                     break;
 
                 default:
@@ -73,7 +100,8 @@ internal static class ProgramMain
         string version,
         string description,
         string featureResource,
-        string output)
+        string output,
+        ComposablePackageDefinition? composable)
     {
         if (File.Exists(output))
         {
@@ -101,7 +129,7 @@ internal static class ProgramMain
 
         string temporaryDirectory = Path.Combine(
             Path.GetTempPath(),
-            "T2-Mod-Packager-v0.1-EXE-Only",
+            "T2-Mod-Packager-v0.2-EXE-Only",
             Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temporaryDirectory);
         try
@@ -129,6 +157,8 @@ internal static class ProgramMain
                     ExecutableSha256 = known.ExecutableSha256,
                     ArchiveSha256 = known.ArchiveSha256
                 },
+                Core = composable?.Core,
+                FeatureFlags = composable?.FeatureFlags ?? [],
                 Resources =
                 [
                     new ResourceClaim { Id = "file:TMNT2.exe" },
@@ -172,7 +202,11 @@ internal static class ProgramMain
         string standaloneExe,
         string originalDat,
         string finalLpac,
-        string output)
+        string output,
+        string version = "1.0.0",
+        string description = "Playable Slashuur with five boss moves and Adaptive Teleport v2. " +
+                             "Does not enable MSAA, Intro Skip, widescreen, or difficulty modifications.",
+        ComposablePackageDefinition? composable = null)
     {
         if (File.Exists(output))
         {
@@ -211,7 +245,7 @@ internal static class ProgramMain
 
         string temporaryDirectory = Path.Combine(
             Path.GetTempPath(),
-            "T2-Mod-Packager-v0.1",
+            "T2-Mod-Packager-v0.2-Ultimate-Slashuur",
             Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(temporaryDirectory);
         try
@@ -230,7 +264,10 @@ internal static class ProgramMain
                 standaloneExe,
                 standaloneHash,
                 finalLpac,
-                lpacHash);
+                lpacHash,
+                version,
+                description,
+                composable);
             byte[] manifestJson = ManifestSerializer.Serialize(manifest);
 
             Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(output))!);
@@ -255,7 +292,10 @@ internal static class ProgramMain
         string standaloneExe,
         string standaloneHash,
         string finalLpac,
-        string lpacHash)
+        string lpacHash,
+        string version,
+        string description,
+        ComposablePackageDefinition? composable)
     {
         KnownGameBuild known = KnownGameBuilds.UsNaRetail;
         return new ModManifest
@@ -263,9 +303,8 @@ internal static class ProgramMain
             SchemaVersion = 1,
             Id = "Ultimate_Slashuur",
             DisplayName = "Ultimate Slashuur",
-            Version = "1.0.0",
-            Description = "Playable Slashuur with five boss moves and Adaptive Teleport v2. " +
-                          "Does not enable MSAA, Intro Skip, widescreen, or difficulty modifications.",
+            Version = version,
+            Description = description,
             Target = new GameTarget
             {
                 Game = "TMNT2_Battle_Nexus_PC",
@@ -274,6 +313,8 @@ internal static class ProgramMain
                 ExecutableSha256 = known.ExecutableSha256,
                 ArchiveSha256 = known.ArchiveSha256
             },
+            Core = composable?.Core,
+            FeatureFlags = composable?.FeatureFlags ?? [],
             Resources =
             [
                 new ResourceClaim { Id = "file:TMNT2.exe" },
@@ -374,9 +415,60 @@ internal static class ProgramMain
         }
     }
 
+    private static ComposablePackageDefinition ParseComposableDefinition(
+        IReadOnlyDictionary<string, string> options)
+    {
+        string coreId = RequireOption(options, "--core-id");
+        RequireSafeIdentifier(coreId, "composable core ID");
+        if (!int.TryParse(RequireOption(options, "--core-priority"), out int priority) ||
+            priority is < 0 or > 1_000)
+        {
+            throw new ArgumentException("The composable core priority must be from 0 through 1000.");
+        }
+
+        List<string> capabilities = ParseIdentifierList(
+            RequireOption(options, "--core-capabilities"),
+            "core capability");
+        List<string> featureFlags = ParseIdentifierList(
+            RequireOption(options, "--feature-flags"),
+            "feature flag");
+        if (featureFlags.Any(flag =>
+            !capabilities.Contains(flag, StringComparer.OrdinalIgnoreCase)))
+        {
+            throw new ArgumentException(
+                "Every feature flag must be present in the core capability list.");
+        }
+
+        return new ComposablePackageDefinition(
+            new ComposableCore
+            {
+                Id = coreId,
+                Priority = priority,
+                Capabilities = capabilities
+            },
+            featureFlags);
+    }
+
+    private static List<string> ParseIdentifierList(string value, string description)
+    {
+        List<string> result = value
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToList();
+        if (result.Count is < 1 or > 32 ||
+            result.Distinct(StringComparer.OrdinalIgnoreCase).Count() != result.Count)
+        {
+            throw new ArgumentException($"The {description} list is empty, duplicated, or too large.");
+        }
+        foreach (string item in result)
+        {
+            RequireSafeIdentifier(item, description);
+        }
+        return result;
+    }
+
     private static void PrintUsage()
     {
-        Console.WriteLine("T2-Mod-Packager-v0.1");
+        Console.WriteLine("T2-Mod-Packager-v0.2-Composable-Mods-US");
         Console.WriteLine();
         Console.WriteLine("pack-ultimate-slashuur \\");
         Console.WriteLine("  --original-exe <untouched US TMNT2.exe> \\");
@@ -395,6 +487,30 @@ internal static class ProgramMain
         Console.WriteLine("  --description <package description> \\");
         Console.WriteLine("  --feature-resource <feature:resource-id> \\");
         Console.WriteLine("  --output <package.t2mod>");
+        Console.WriteLine();
+        Console.WriteLine("pack-composable-exe \\");
+        Console.WriteLine("  --original-exe <untouched US TMNT2.exe> \\");
+        Console.WriteLine("  --core-exe <shared composable-core US x86 executable> \\");
+        Console.WriteLine("  --original-dat <untouched US TMNT.DAT> \\");
+        Console.WriteLine("  --id <package_id> --display-name <name> --version <version> \\");
+        Console.WriteLine("  --description <description> --feature-resource <feature:id> \\");
+        Console.WriteLine("  --core-id <core_family> --core-priority <0..1000> \\");
+        Console.WriteLine("  --core-capabilities <comma-separated IDs> \\");
+        Console.WriteLine("  --feature-flags <comma-separated IDs> --output <package.t2mod>");
+        Console.WriteLine();
+        Console.WriteLine("pack-composable-ultimate-slashuur \\");
+        Console.WriteLine("  --original-exe <untouched US TMNT2.exe> \\");
+        Console.WriteLine("  --core-exe <Slashuur-capable composable-core executable> \\");
+        Console.WriteLine("  --original-dat <untouched US TMNT.DAT> \\");
+        Console.WriteLine("  --slashuur-lpac <final 77-chunk slashuur.lpac> \\");
+        Console.WriteLine("  --version <version> --description <description> \\");
+        Console.WriteLine("  --core-id <core_family> --core-priority <0..1000> \\");
+        Console.WriteLine("  --core-capabilities <comma-separated IDs> \\");
+        Console.WriteLine("  --feature-flags <comma-separated IDs> --output <Ultimate_Slashuur.t2mod>");
     }
+
+    private sealed record ComposablePackageDefinition(
+        ComposableCore Core,
+        List<string> FeatureFlags);
 }
 

@@ -11,7 +11,7 @@ Packages may not contain absolute paths, parent-directory traversal, device
 paths, symbolic links, or executable scripts. The manager reads only manifest-
 declared entries and never performs a general ZIP extraction.
 
-## Supported v0.1 operations
+## Supported operations
 
 ### `apply-t2delta`
 
@@ -29,6 +29,22 @@ unchanged entries and the original name-table bytes are copied directly.
 Every operation must be covered by an exclusive resource claim. The manager
 also supports higher-level feature claims for conflicts such as mutually
 exclusive difficulty overhauls.
+
+## Composable T2 Core metadata
+
+EXE-changing packages can opt into safe composition by declaring a `core`
+object and one or more `featureFlags`. All packages in a compatible family use
+the same core ID. Each package still contains one verified executable delta,
+but the manager installs only one core: the highest-priority active package
+whose declared capabilities cover the complete requested feature set.
+
+Packages with the same core ID may share the `file:TMNT2.exe` claim. Other
+exclusive resources continue to conflict normally. Legacy whole-EXE packages
+cannot be mixed with composable packages.
+
+The selected flags are written transactionally to
+`.t2-mod-manager/features.txt`. The shared executable defaults every optional
+feature to off when that file is missing or contains no matching flag.
 
 ## Future compatibility
 

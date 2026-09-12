@@ -79,6 +79,10 @@ public sealed class ModManagerService
         state.GameBuildId = fingerprint.BuildId;
         state.CurrentExecutableSha256 = fingerprint.ExecutableSha256;
         state.CurrentArchiveSha256 = fingerprint.ArchiveSha256;
+        state.CurrentFeatureStateSha256 = File.Exists(installation.FeatureStatePath)
+            ? await Sha256Service.HashFileAsync(installation.FeatureStatePath, cancellationToken)
+                .ConfigureAwait(false)
+            : null;
         await _stateStore.SaveAsync(state, cancellationToken).ConfigureAwait(false);
     }
 
@@ -213,10 +217,12 @@ public sealed class ModManagerService
 
             string stagedExecutable = Path.Combine(stageDirectory, "TMNT2.exe");
             string stagedArchive = Path.Combine(stageDirectory, "TMNT.DAT");
+            string stagedFeatureState = Path.Combine(stageDirectory, "features.txt");
+            CoreSelection? coreSelection = ResolveCoreSelection(packages);
             await BuildExecutableAsync(
                 backup.ExecutablePath,
                 stagedExecutable,
-                packages,
+                coreSelection,
                 stageDirectory,
                 progress,
                 cancellationToken).ConfigureAwait(false);
@@ -228,6 +234,12 @@ public sealed class ModManagerService
                 progress,
                 cancellationToken).ConfigureAwait(false);
 
+            byte[] featureState = ComposableFeatureState.Serialize(
+                coreSelection?.CoreId,
+                coreSelection?.FeatureFlags ?? []);
+            await File.WriteAllBytesAsync(stagedFeatureState, featureState, cancellationToken)
+                .ConfigureAwait(false);
+
             progress?.Report(new OperationProgress("validate", "Validating staged game files…", 0.65));
             _ = PeValidator.ValidateWin32Executable(stagedExecutable);
             _ = AfsArchive.Read(stagedArchive);
@@ -235,13 +247,18 @@ public sealed class ModManagerService
                 .ConfigureAwait(false);
             string archiveHash = await Sha256Service.HashFileAsync(stagedArchive, cancellationToken)
                 .ConfigureAwait(false);
+            string featureStateHash = await Sha256Service.HashFileAsync(
+                stagedFeatureState,
+                cancellationToken).ConfigureAwait(false);
 
             await TransactionalFileInstaller.CommitAsync(
                 installation,
                 stagedExecutable,
                 stagedArchive,
+                stagedFeatureState,
                 executableHash,
                 archiveHash,
+                featureStateHash,
                 progress,
                 cancellationToken).ConfigureAwait(false);
 
@@ -251,6 +268,7 @@ public sealed class ModManagerService
             }
             state.CurrentExecutableSha256 = executableHash;
             state.CurrentArchiveSha256 = archiveHash;
+            state.CurrentFeatureStateSha256 = featureStateHash;
             await _stateStore.SaveAsync(state, cancellationToken).ConfigureAwait(false);
             await TransactionalFileInstaller.CleanupCompletedAsync(installation, cancellationToken)
                 .ConfigureAwait(false);
@@ -272,30 +290,20 @@ public sealed class ModManagerService
     private static async Task BuildExecutableAsync(
         string vanillaExecutable,
         string stagedExecutable,
-        IReadOnlyList<T2ModPackage> packages,
+        CoreSelection? selection,
         string stageDirectory,
         IProgress<OperationProgress>? progress,
         CancellationToken cancellationToken)
     {
-        List<(T2ModPackage Package, ModOperation Operation)> operations = packages
-            .SelectMany(package => package.Manifest.Operations
-                .Where(operation => operation.Type == "apply-t2delta")
-                .Select(operation => (package, operation)))
-            .ToList();
-
-        if (operations.Count == 0)
+        if (selection is null)
         {
             progress?.Report(new OperationProgress("stage", "Staging the vanilla executable…", 0.1));
             await CopyFileAsync(vanillaExecutable, stagedExecutable, cancellationToken).ConfigureAwait(false);
             return;
         }
 
-        if (operations.Count != 1)
-        {
-            throw new InvalidDataException("v0.1 accepts one resolved T2 Core EXE delta at a time.");
-        }
-
-        (T2ModPackage package, ModOperation operation) = operations[0];
+        T2ModPackage package = selection.Package;
+        ModOperation operation = selection.Operation;
         await RequireFileFingerprintAsync(
             vanillaExecutable,
             operation.ExpectedInputSize!.Value,
@@ -316,6 +324,69 @@ public sealed class ModManagerService
             operation.ExpectedOutputSize!.Value,
             operation.ExpectedOutputSha256!,
             cancellationToken).ConfigureAwait(false);
+    }
+
+    private static CoreSelection? ResolveCoreSelection(IReadOnlyList<T2ModPackage> packages)
+    {
+        List<(T2ModPackage Package, ModOperation Operation)> operations = packages
+            .SelectMany(package => package.Manifest.Operations
+                .Where(operation => operation.Type == "apply-t2delta")
+                .Select(operation => (package, operation)))
+            .ToList();
+
+        if (operations.Count == 0)
+        {
+            return null;
+        }
+
+        if (operations.Count == 1 && operations[0].Package.Manifest.Core is null)
+        {
+            return new CoreSelection(
+                operations[0].Package,
+                operations[0].Operation,
+                null,
+                []);
+        }
+
+        if (operations.Any(item => item.Package.Manifest.Core is null))
+        {
+            throw new InvalidOperationException(
+                "Legacy standalone EXE packages cannot be combined with composable packages. " +
+                "Re-import the composable package versions first.");
+        }
+
+        string[] coreIds = operations
+            .Select(item => item.Package.Manifest.Core!.Id)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (coreIds.Length != 1)
+        {
+            throw new InvalidOperationException(
+                "The selected mods target different composable T2 Core families.");
+        }
+
+        IReadOnlyList<string> flags = ComposableFeatureState.CollectFlags(
+            packages.Select(package => package.Manifest));
+        List<(T2ModPackage Package, ModOperation Operation)> candidates = operations
+            .Where(item => flags.All(flag =>
+                item.Package.Manifest.Core!.Capabilities.Contains(
+                    flag,
+                    StringComparer.OrdinalIgnoreCase)))
+            .OrderByDescending(item => item.Package.Manifest.Core!.Priority)
+            .ThenBy(item => item.Operation.ExpectedOutputSha256, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (candidates.Count == 0)
+        {
+            throw new InvalidOperationException(
+                "No installed package provides a T2 Core capable of running every selected feature.");
+        }
+
+        (T2ModPackage Package, ModOperation Operation) selected = candidates[0];
+        return new CoreSelection(
+            selected.Package,
+            selected.Operation,
+            coreIds[0],
+            flags);
     }
 
     private static async Task BuildArchiveAsync(
@@ -499,6 +570,21 @@ public sealed class ModManagerService
                 "The managed TMNT2.exe or TMNT.DAT changed outside the manager. " +
                 "Use Verify/Repair instead of applying another mod state.");
         }
+
+        if (!string.IsNullOrWhiteSpace(state.CurrentFeatureStateSha256))
+        {
+            if (!File.Exists(installation.FeatureStatePath) ||
+                !Sha256Service.EqualsHash(
+                    await Sha256Service.HashFileAsync(
+                        installation.FeatureStatePath,
+                        cancellationToken).ConfigureAwait(false),
+                    state.CurrentFeatureStateSha256))
+            {
+                throw new InvalidDataException(
+                    "The managed feature-state file changed outside the manager. " +
+                    "Use Verify/Repair instead of applying another mod state.");
+            }
+        }
     }
 
     private static async Task RequireFileFingerprintAsync(
@@ -554,4 +640,10 @@ public sealed class ModManagerService
                 $"At least {requiredBytes / (1024 * 1024)} MiB of free space is required on {root}.");
         }
     }
+
+    private sealed record CoreSelection(
+        T2ModPackage Package,
+        ModOperation Operation,
+        string? CoreId,
+        IReadOnlyList<string> FeatureFlags);
 }

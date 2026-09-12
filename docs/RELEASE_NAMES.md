@@ -23,6 +23,23 @@
 A linker MAP is not produced because the manager is a managed .NET/WPF
 application. MAP naming remains mandatory for future native TMNT2 EXE builds.
 
+## v0.2 composable-mod build (cumulative)
+
+- Branch: `codex/t2-mod-manager-v0.2-composable-mods-us`
+- Workflow: `build-t2-mod-manager-v0.2-composable-mods-us`
+- Windows artifact:
+  `T2-Mod-Manager-v0.2-Composable-Mods-US-win-x64-run-<run-number>`
+- Application: `T2-Mod-Manager-v0.2-Composable-Mods-US.exe`
+- Application symbols: `T2-Mod-Manager-v0.2-Composable-Mods-US.pdb`
+- Core symbols: `T2-Mod-Manager-Core-v0.2-Composable-Mods-US.pdb`
+- Packager: `T2-Mod-Packager-v0.2-Composable-Mods-US.dll`
+- MAP: not produced because the launcher is a managed .NET/WPF application.
+- Core family: `TMNT2_Composable_Core_v1_US`
+- Standard native core outputs: `TMNT2_T2Mod_Composable_Core_v1_US.exe`,
+  `.pdb`, and `.map`
+- Slashuur native core outputs:
+  `TMNT2_T2Mod_Composable_Core_Slashuur_v1_US.exe`, `.pdb`, and `.map`
+
 ## Game-folder-selection fix build
 
 - Branch: `codex/t2-mod-manager-v0.1-game-folder-selection-fix`

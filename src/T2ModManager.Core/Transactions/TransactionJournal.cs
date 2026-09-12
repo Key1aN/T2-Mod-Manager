@@ -7,12 +7,13 @@ public enum TransactionPhase
     DatCommitted,
     Completed,
     RollingBack,
-    RolledBack
+    RolledBack,
+    FeatureStateCommitted
 }
 
 public sealed class TransactionJournal
 {
-    public int SchemaVersion { get; init; } = 1;
+    public int SchemaVersion { get; init; } = 2;
     public required string TransactionId { get; init; }
     public required string GameDirectory { get; init; }
     public required string StagedExecutable { get; init; }
@@ -21,6 +22,10 @@ public sealed class TransactionJournal
     public required string RollbackArchive { get; init; }
     public required string ExpectedExecutableSha256 { get; init; }
     public required string ExpectedArchiveSha256 { get; init; }
+    public string? StagedFeatureState { get; init; }
+    public string? RollbackFeatureState { get; init; }
+    public string? ExpectedFeatureStateSha256 { get; init; }
+    public bool FeatureStatePreviouslyExisted { get; init; }
     public TransactionPhase Phase { get; set; }
     public DateTimeOffset StartedAtUtc { get; init; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAtUtc { get; set; } = DateTimeOffset.UtcNow;

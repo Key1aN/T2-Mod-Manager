@@ -13,7 +13,16 @@ public sealed class ModManifest
     public List<ResourceClaim> Resources { get; init; } = [];
     public List<ModDependency> Dependencies { get; init; } = [];
     public List<string> Conflicts { get; init; } = [];
+    public ComposableCore? Core { get; init; }
+    public List<string> FeatureFlags { get; init; } = [];
     public List<ModOperation> Operations { get; init; } = [];
+}
+
+public sealed class ComposableCore
+{
+    public required string Id { get; init; }
+    public int Priority { get; init; }
+    public List<string> Capabilities { get; init; } = [];
 }
 
 public sealed class GameTarget
