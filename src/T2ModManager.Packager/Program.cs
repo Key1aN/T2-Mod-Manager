@@ -26,29 +26,144 @@ internal static class ProgramMain
                 return 0;
             }
 
-            if (!string.Equals(args[0], "pack-ultimate-slashuur", StringComparison.Ordinal))
+            switch (args[0])
             {
-                throw new ArgumentException($"Unknown command: {args[0]}");
+                case "pack-ultimate-slashuur":
+                    await PackUltimateSlashuurAsync(
+                        RequireOption(options, "--original-exe"),
+                        RequireOption(options, "--standalone-exe"),
+                        RequireOption(options, "--original-dat"),
+                        RequireOption(options, "--slashuur-lpac"),
+                        RequireOption(options, "--output")).ConfigureAwait(false);
+                    break;
+
+                case "pack-exe-only":
+                    await PackExeOnlyAsync(
+                        RequireOption(options, "--original-exe"),
+                        RequireOption(options, "--standalone-exe"),
+                        RequireOption(options, "--original-dat"),
+                        RequireOption(options, "--id"),
+                        RequireOption(options, "--display-name"),
+                        RequireOption(options, "--version"),
+                        RequireOption(options, "--description"),
+                        RequireOption(options, "--feature-resource"),
+                        RequireOption(options, "--output")).ConfigureAwait(false);
+                    break;
+
+                default:
+                    throw new ArgumentException($"Unknown command: {args[0]}");
             }
 
-            string originalExe = RequireOption(options, "--original-exe");
-            string standaloneExe = RequireOption(options, "--standalone-exe");
-            string originalDat = RequireOption(options, "--original-dat");
-            string finalLpac = RequireOption(options, "--slashuur-lpac");
-            string output = RequireOption(options, "--output");
-            await PackUltimateSlashuurAsync(
-                originalExe,
-                standaloneExe,
-                originalDat,
-                finalLpac,
-                output).ConfigureAwait(false);
-            Console.WriteLine($"Created: {Path.GetFullPath(output)}");
+            Console.WriteLine($"Created: {Path.GetFullPath(RequireOption(options, "--output"))}");
             return 0;
         }
         catch (Exception exception)
         {
             Console.Error.WriteLine($"ERROR: {exception.Message}");
             return 1;
+        }
+    }
+
+    private static async Task PackExeOnlyAsync(
+        string originalExe,
+        string standaloneExe,
+        string originalDat,
+        string id,
+        string displayName,
+        string version,
+        string description,
+        string featureResource,
+        string output)
+    {
+        if (File.Exists(output))
+        {
+            throw new IOException("Refusing to overwrite an existing output package.");
+        }
+
+        RequireSafeIdentifier(id, "mod ID");
+        if (!featureResource.StartsWith("feature:", StringComparison.Ordinal) ||
+            featureResource.Length > 180 ||
+            featureResource.Any(char.IsControl))
+        {
+            throw new ArgumentException("The feature resource must be a safe feature: resource ID.");
+        }
+
+        KnownGameBuild known = KnownGameBuilds.UsNaRetail;
+        await RequireFingerprintAsync(
+            originalExe,
+            known.ExecutableSize,
+            known.ExecutableSha256).ConfigureAwait(false);
+        await RequireFingerprintAsync(
+            originalDat,
+            known.ArchiveSize,
+            known.ArchiveSha256).ConfigureAwait(false);
+        _ = PeValidator.ValidateWin32Executable(standaloneExe);
+
+        string temporaryDirectory = Path.Combine(
+            Path.GetTempPath(),
+            "T2-Mod-Packager-v0.1-EXE-Only",
+            Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temporaryDirectory);
+        try
+        {
+            string payloadName = $"{id}.t2delta";
+            string payloadPath = $"payload/{payloadName}";
+            string deltaPath = Path.Combine(temporaryDirectory, payloadName);
+            Console.WriteLine("Generating verified executable delta…");
+            await T2Delta.GenerateAsync(originalExe, standaloneExe, deltaPath).ConfigureAwait(false);
+
+            string deltaHash = await Sha256Service.HashFileAsync(deltaPath).ConfigureAwait(false);
+            string standaloneHash = await Sha256Service.HashFileAsync(standaloneExe).ConfigureAwait(false);
+            ModManifest manifest = new()
+            {
+                SchemaVersion = 1,
+                Id = id,
+                DisplayName = displayName,
+                Version = version,
+                Description = description,
+                Target = new GameTarget
+                {
+                    Game = "TMNT2_Battle_Nexus_PC",
+                    Region = known.Region,
+                    Architecture = known.Architecture,
+                    ExecutableSha256 = known.ExecutableSha256,
+                    ArchiveSha256 = known.ArchiveSha256
+                },
+                Resources =
+                [
+                    new ResourceClaim { Id = "file:TMNT2.exe" },
+                    new ResourceClaim { Id = featureResource }
+                ],
+                Operations =
+                [
+                    new ModOperation
+                    {
+                        Type = "apply-t2delta",
+                        Target = "TMNT2.exe",
+                        Payload = payloadPath,
+                        PayloadSha256 = deltaHash,
+                        PayloadSize = new FileInfo(deltaPath).Length,
+                        ExpectedInputSha256 = known.ExecutableSha256,
+                        ExpectedInputSize = known.ExecutableSize,
+                        ExpectedOutputSha256 = standaloneHash,
+                        ExpectedOutputSize = new FileInfo(standaloneExe).Length
+                    }
+                ]
+            };
+            byte[] manifestJson = ManifestSerializer.Serialize(manifest);
+
+            Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(output))!);
+            using FileStream packageStream = new(output, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
+            using ZipArchive package = new(packageStream, ZipArchiveMode.Create, leaveOpen: false);
+            AddBytes(package, "manifest.json", manifestJson);
+            AddFile(package, payloadPath, deltaPath, CompressionLevel.NoCompression);
+        }
+        finally
+        {
+            if (Directory.Exists(temporaryDirectory))
+            {
+                Directory.Delete(temporaryDirectory, recursive: true);
+            }
         }
     }
 
@@ -248,6 +363,17 @@ internal static class ProgramMain
             ? value
             : throw new ArgumentException($"Missing required option: {name}");
 
+    private static void RequireSafeIdentifier(string value, string description)
+    {
+        if (value.Length is < 1 or > 80 ||
+            !char.IsLetterOrDigit(value[0]) ||
+            value.Any(character =>
+                !char.IsLetterOrDigit(character) && character is not '_' and not '.' and not '-'))
+        {
+            throw new ArgumentException($"Invalid {description}: {value}");
+        }
+    }
+
     private static void PrintUsage()
     {
         Console.WriteLine("T2-Mod-Packager-v0.1");
@@ -258,6 +384,17 @@ internal static class ProgramMain
         Console.WriteLine("  --original-dat <untouched US TMNT.DAT> \\");
         Console.WriteLine("  --slashuur-lpac <final 77-chunk slashuur.lpac> \\");
         Console.WriteLine("  --output <Ultimate_Slashuur.t2mod>");
+        Console.WriteLine();
+        Console.WriteLine("pack-exe-only \\");
+        Console.WriteLine("  --original-exe <untouched US TMNT2.exe> \\");
+        Console.WriteLine("  --standalone-exe <feature-only US x86 executable> \\");
+        Console.WriteLine("  --original-dat <untouched US TMNT.DAT> \\");
+        Console.WriteLine("  --id <package_id> \\");
+        Console.WriteLine("  --display-name <display name> \\");
+        Console.WriteLine("  --version <numeric dotted version> \\");
+        Console.WriteLine("  --description <package description> \\");
+        Console.WriteLine("  --feature-resource <feature:resource-id> \\");
+        Console.WriteLine("  --output <package.t2mod>");
     }
 }
 

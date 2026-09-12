@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using T2ModManager.Core.Archives;
 using T2ModManager.Core.Conflict;
 using T2ModManager.Core.Game;
+using T2ModManager.Core.Hashing;
 using T2ModManager.Core.Models;
 using T2ModManager.Core.Packages;
 using T2ModManager.Core.Patching;
@@ -10,14 +11,25 @@ using T2ModManager.Core.Validation;
 
 string root = Path.Combine(Path.GetTempPath(), $"cmm-tests-{Guid.NewGuid():N}");
 Directory.CreateDirectory(root);
+string? integrationGameDirectory = null;
+IReadOnlyList<string> packagePaths = args;
+if (args.Length >= 3 && args[0] == "--integration-game")
+{
+    integrationGameDirectory = args[1];
+    packagePaths = args.Skip(2).ToArray();
+}
 
 try
 {
     await DeltaRoundTripAsync(root);
     await AfsReplacementRoundTripAsync(root);
-    if (args.Length == 1)
+    foreach (string packagePath in packagePaths)
     {
-        await PackageValidationAsync(root, args[0]);
+        await PackageValidationAsync(root, packagePath);
+    }
+    if (integrationGameDirectory is not null)
+    {
+        await ExeOnlyPackageIntegrationAsync(root, integrationGameDirectory, packagePaths);
     }
     GameDirectoryDetection(root);
     ManifestDescriptionValidation();
@@ -90,6 +102,50 @@ static void LpacValidation(string root)
     Assert(result.ChunkCount == 1 && result.Chunks[0].Name == "test", "LPAC metadata was parsed incorrectly.");
 }
 
+static async Task ExeOnlyPackageIntegrationAsync(
+    string root,
+    string sourceGameDirectory,
+    IReadOnlyList<string> packagePaths)
+{
+    string gameDirectory = Path.Combine(root, "integration-game");
+    Directory.CreateDirectory(gameDirectory);
+    string gameExe = Path.Combine(gameDirectory, "TMNT2.exe");
+    string gameDat = Path.Combine(gameDirectory, "TMNT.DAT");
+    File.Copy(Path.Combine(sourceGameDirectory, "TMNT2.exe"), gameExe);
+    File.Copy(Path.Combine(sourceGameDirectory, "TMNT.DAT"), gameDat);
+
+    KnownGameBuild known = KnownGameBuilds.UsNaRetail;
+    ModManagerService service = new(Path.Combine(root, "integration-appdata"));
+    await service.InitializeGameAsync(gameDirectory);
+
+    foreach (string packagePath in packagePaths)
+    {
+        using T2ModPackage package = T2ModPackage.Open(packagePath);
+        Assert(
+            package.Manifest.Operations.Count == 1 &&
+            package.Manifest.Operations[0].Type == "apply-t2delta",
+            $"Package {package.Manifest.Id} is not EXE-only.");
+        string expectedOutputHash = package.Manifest.Operations[0].ExpectedOutputSha256!;
+
+        InstalledMod installed = await service.InstallPackageAsync(packagePath);
+        await service.ActivateAsync(installed.Id);
+        Assert(
+            Sha256Service.EqualsHash(await Sha256Service.HashFileAsync(gameExe), expectedOutputHash),
+            $"Package {installed.Id} did not produce its declared executable.");
+        Assert(
+            Sha256Service.EqualsHash(await Sha256Service.HashFileAsync(gameDat), known.ArchiveSha256),
+            $"Package {installed.Id} changed TMNT.DAT.");
+
+        await service.DeactivateAsync(installed.Id);
+        Assert(
+            Sha256Service.EqualsHash(await Sha256Service.HashFileAsync(gameExe), known.ExecutableSha256),
+            $"Deactivating {installed.Id} did not restore the retail executable.");
+        Assert(
+            Sha256Service.EqualsHash(await Sha256Service.HashFileAsync(gameDat), known.ArchiveSha256),
+            $"Deactivating {installed.Id} did not preserve the retail archive.");
+    }
+}
+
 static async Task PackageValidationAsync(string root, string packagePath)
 {
     using T2ModPackage package = T2ModPackage.Open(packagePath);
@@ -97,8 +153,8 @@ static async Task PackageValidationAsync(string root, string packagePath)
         !string.IsNullOrWhiteSpace(package.Manifest.Description),
         "The supplied package description is missing.");
     Assert(
-        package.Manifest.Id == "Ultimate_Slashuur",
-        "The supplied package identity changed.");
+        !string.IsNullOrWhiteSpace(package.Manifest.Id),
+        "The supplied package identity is missing.");
 
     foreach (ModOperation operation in package.Manifest.Operations)
     {
