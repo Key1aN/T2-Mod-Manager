@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "id": "Ultimate_Slashuur",
   "displayName": "Ultimate Slashuur",
-  "version": "1.1.0",
-  "description": "Adds playable Slashuur with all five boss moves and Adaptive Teleport v2. Teleport targets eligible nearby ground enemies within a 25-unit radius, excludes flying enemies, preserves the original forward fallback, and revalidates targets before use. Includes the established attack-cancel rules while preserving hidden/collisionless invulnerability and all existing visual effects. Can be combined with Intro Skip, MSAA, New Difficulties, and Widescreen; those features remain off unless their own packages are checked.",
+  "version": "1.1.1",
+  "description": "Adds playable Slashuur with all five boss moves and Adaptive Teleport v2. Teleport targets eligible nearby ground enemies within a 25-unit radius, excludes flying enemies, preserves the original forward fallback, and revalidates targets before use. Includes the established attack-cancel rules while preserving hidden/collisionless invulnerability and all existing visual effects. Buffered runtime tracing prevents diagnostic disk I/O from stalling special attacks. Can be combined with Intro Skip, MSAA, New Difficulties, and Widescreen; those features remain off unless their own packages are checked.",
   "target": {
     "game": "TMNT2_Battle_Nexus_PC",
     "region": "US/NA",
@@ -50,11 +50,11 @@
       "type": "apply-t2delta",
       "target": "TMNT2.exe",
       "payload": "payload/Ultimate_Slashuur.t2delta",
-      "payloadSha256": "043ee48d671311fdeb35224eef600b2d2fe06c2296ef181fcd4e14ba2e12f2a6",
-      "payloadSize": 1937271,
+      "payloadSha256": "ad003a3a05735010d63da4d3d5b762ec34e01ddd59c83ea71a65abc682e62e0b",
+      "payloadSize": 1937420,
       "expectedInputSha256": "b827478461e1687f9404679211fc2d2d47bd7222aeb81a8554bd793575a89564",
       "expectedInputSize": 4796416,
-      "expectedOutputSha256": "0f4cdc43718d99120e429816ec0ce0f3cc255f098b36d6f66df9d3bc6b10e3ff",
+      "expectedOutputSha256": "3bdd7ffcf8d962e2adcca1bdc6778f248e5a38f81d44f94e030553f986b2a57e",
       "expectedOutputSize": 4651008
     },
     {

@@ -3,7 +3,7 @@
 This directory intentionally contains only a manifest template. The supplied
 final LPAC was validated on 2026-08-30:
 
-The composable package version is `1.1.0`. Its manifest description is the source of the
+The composable package version is `1.1.1`. Its manifest description is the source of the
 text displayed by the launcher's dynamic mod list; no Slashuur name or feature
 description is hard-coded in the launcher UI.
 
@@ -17,7 +17,12 @@ and verified as PE32 x86:
 
 - Size: `4,651,008` bytes
 - SHA-256:
-  `0f4cdc43718d99120e429816ec0ce0f3cc255f098b36d6f66df9d3bc6b10e3ff`
+  `3bdd7ffcf8d962e2adcca1bdc6778f248e5a38f81d44f94e030553f986b2a57e`
+
+This core keeps the Slashuur runtime trace open and buffers gameplay
+breadcrumbs, flushing on crash, fatal report, or clean shutdown. It removes
+the measured 15-25 ms synchronous disk stalls from special attacks without
+changing their controls, timing, damage, effects, or targeting.
 
 The resulting `Ultimate_Slashuur.t2mod` declares the shared
 `TMNT2_Composable_Core_v1_US` family at priority 100. It supplies the

@@ -1,11 +1,11 @@
-# Ultimate_Slashuur v1.1.0 composable build information
+# Ultimate_Slashuur v1.1.1 FPS-fix composable build information
 
 ## Package
 
 - Filename: `Ultimate_Slashuur.t2mod`
-- Size: `2,414,955` bytes
+- Size: `2,415,161` bytes
 - SHA-256:
-  `5114e3613f2dc44e8ecac56ff47ee4c2529f6b815349fb2b8b6a3f4762634420`
+  `13f9deb1739c7da4e1de7184c1423cf76fc3a6236c3a22e414b8bc3a5870fdf3`
 - Entries: `manifest.json`, `payload/Ultimate_Slashuur.t2delta`, and
   `payload/Ultimate_Slashuur.lpac`
 
@@ -13,13 +13,13 @@
 
 - Size: `4,651,008` bytes
 - SHA-256:
-  `0f4cdc43718d99120e429816ec0ce0f3cc255f098b36d6f66df9d3bc6b10e3ff`
+  `3bdd7ffcf8d962e2adcca1bdc6778f248e5a38f81d44f94e030553f986b2a57e`
 
 ## Executable delta
 
-- Size: `1,937,271` bytes
+- Size: `1,937,420` bytes
 - SHA-256:
-  `043ee48d671311fdeb35224eef600b2d2fe06c2296ef181fcd4e14ba2e12f2a6`
+  `ad003a3a05735010d63da4d3d5b762ec34e01ddd59c83ea71a65abc682e62e0b`
 
 ## Final LPAC
 
@@ -33,6 +33,7 @@ other composable packages, selected this priority-100 core, preserved the final
 LPAC replacement, then restored the retail EXE and DAT after deactivation. ZIP
 integrity and the three-entry allowlist were also verified.
 
-Version `1.1.0` changes the EXE delta to the Slashuur-capable composable core
-and adds core capabilities plus the `ultimate-slashuur` feature flag. The final
-LPAC bytes and hash are unchanged from version `1.0.1`.
+Version `1.1.1` keeps the v1.1.0 composable feature behavior and changes only
+the Slashuur-capable core's runtime trace I/O. Gameplay breadcrumbs are now
+buffered instead of physically flushed for every special-attack event. The
+final LPAC bytes and hash are unchanged from versions `1.0.1` and `1.1.0`.
