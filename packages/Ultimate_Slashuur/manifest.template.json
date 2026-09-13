@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "id": "Ultimate_Slashuur",
   "displayName": "Ultimate Slashuur",
-  "version": "1.1.1",
-  "description": "Adds playable Slashuur with all five boss moves and Adaptive Teleport v2. Teleport targets eligible nearby ground enemies within a 25-unit radius, excludes flying enemies, preserves the original forward fallback, and revalidates targets before use. Includes the established attack-cancel rules while preserving hidden/collisionless invulnerability and all existing visual effects. Buffered runtime tracing prevents diagnostic disk I/O from stalling special attacks. Can be combined with Intro Skip, MSAA, New Difficulties, and Widescreen; those features remain off unless their own packages are checked.",
+  "version": "1.2.0",
+  "description": "Adds playable Slashuur with all five boss moves, Adaptive Teleport v2, and two selectable costumes. Normal selection uses the existing white Slashuur; hold R1 while confirming Slashuur to use the prototype-inspired red, charcoal, gold, and burgundy alternate model. Both costumes keep the same skeleton, animations, controls, attack behavior, effects, and buffered FPS fix. Can be combined with Intro Skip, MSAA, New Difficulties, and Widescreen; those features remain off unless their own packages are checked.",
   "target": {
     "game": "TMNT2_Battle_Nexus_PC",
     "region": "US/NA",
@@ -39,36 +39,38 @@
       "msaa",
       "brutal-difficulties",
       "widescreen",
-      "ultimate-slashuur"
+      "ultimate-slashuur",
+      "slashuur-dual-costumes"
     ]
   },
   "featureFlags": [
-    "ultimate-slashuur"
+    "ultimate-slashuur",
+    "slashuur-dual-costumes"
   ],
   "operations": [
     {
       "type": "apply-t2delta",
       "target": "TMNT2.exe",
       "payload": "payload/Ultimate_Slashuur.t2delta",
-      "payloadSha256": "ad003a3a05735010d63da4d3d5b762ec34e01ddd59c83ea71a65abc682e62e0b",
-      "payloadSize": 1937420,
+      "payloadSha256": "169e90307a31879caa6908757c53aed94e92c7c0a19c8aa35b20054a095795ad",
+      "payloadSize": 1937583,
       "expectedInputSha256": "b827478461e1687f9404679211fc2d2d47bd7222aeb81a8554bd793575a89564",
       "expectedInputSize": 4796416,
-      "expectedOutputSha256": "3bdd7ffcf8d962e2adcca1bdc6778f248e5a38f81d44f94e030553f986b2a57e",
+      "expectedOutputSha256": "fe290d56025a9f939c01ad31beae4f437e50eb2e4505dfd9f683e78c5577c8e5",
       "expectedOutputSize": 4651008
     },
     {
       "type": "replace-afs-entry",
       "target": "TMNT.DAT",
       "payload": "payload/Ultimate_Slashuur.lpac",
-      "payloadSha256": "004b8a19dddffe6aeef991a96ea49c33a8ab97ee21a86f26f7eff6a554bbb7fc",
-      "payloadSize": 886656,
+      "payloadSha256": "7dbafbba6072184644de9fe3d05fc1a51b557022601642e0270cb0eaebaa3ef7",
+      "payloadSize": 1314496,
       "entryId": 143,
       "logicalPath": "player/slashuur/slashuur.lpac",
       "expectedInputSha256": "e3f93aa1e63efefb403854a5eea603cc322a9de6b953de89292e804e76777451",
       "expectedInputSize": 605632,
-      "expectedOutputSha256": "004b8a19dddffe6aeef991a96ea49c33a8ab97ee21a86f26f7eff6a554bbb7fc",
-      "expectedOutputSize": 886656
+      "expectedOutputSha256": "7dbafbba6072184644de9fe3d05fc1a51b557022601642e0270cb0eaebaa3ef7",
+      "expectedOutputSize": 1314496
     }
   ]
 }

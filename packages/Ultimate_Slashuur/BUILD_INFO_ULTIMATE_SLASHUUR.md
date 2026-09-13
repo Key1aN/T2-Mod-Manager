@@ -1,11 +1,11 @@
-# Ultimate_Slashuur v1.1.1 FPS-fix composable build information
+# Ultimate Slashuur Dual Costumes v1.2.0 composable build information
 
 ## Package
 
-- Filename: `Ultimate_Slashuur.t2mod`
-- Size: `2,415,161` bytes
+- Filename: `Ultimate_Slashuur_Dual_Costumes_v1.2.0.t2mod`
+- Size: `2,556,407` bytes
 - SHA-256:
-  `13f9deb1739c7da4e1de7184c1423cf76fc3a6236c3a22e414b8bc3a5870fdf3`
+  `eb6274eaaaff0694f8ae0b0aa76c0de52250826a4a3a2477056accff47f525e5`
 - Entries: `manifest.json`, `payload/Ultimate_Slashuur.t2delta`, and
   `payload/Ultimate_Slashuur.lpac`
 
@@ -13,27 +13,27 @@
 
 - Size: `4,651,008` bytes
 - SHA-256:
-  `3bdd7ffcf8d962e2adcca1bdc6778f248e5a38f81d44f94e030553f986b2a57e`
+  `fe290d56025a9f939c01ad31beae4f437e50eb2e4505dfd9f683e78c5577c8e5`
 
 ## Executable delta
 
-- Size: `1,937,420` bytes
+- Size: `1,937,583` bytes
 - SHA-256:
-  `ad003a3a05735010d63da4d3d5b762ec34e01ddd59c83ea71a65abc682e62e0b`
+  `169e90307a31879caa6908757c53aed94e92c7c0a19c8aa35b20054a095795ad`
 
 ## Final LPAC
 
-- Size: `886,656` bytes
-- Chunk count: `77`
+- Size: `1,314,496` bytes
+- Chunk count: `79`
 - SHA-256:
-  `004b8a19dddffe6aeef991a96ea49c33a8ab97ee21a86f26f7eff6a554bbb7fc`
+  `7dbafbba6072184644de9fe3d05fc1a51b557022601642e0270cb0eaebaa3ef7`
 
-The manager's full integration path applied this package together with all four
-other composable packages, selected this priority-100 core, preserved the final
-LPAC replacement, then restored the retail EXE and DAT after deactivation. ZIP
-integrity and the three-entry allowlist were also verified.
+The manager's full integration path applied this package together with all
+four other composable packages, selected this priority-100 core, preserved the
+79-entry LPAC replacement, then restored the retail EXE and DAT after
+deactivation. ZIP integrity and the three-entry allowlist were also verified.
 
-Version `1.1.1` keeps the v1.1.0 composable feature behavior and changes only
-the Slashuur-capable core's runtime trace I/O. Gameplay breadcrumbs are now
-buffered instead of physically flushed for every special-attack event. The
-final LPAC bytes and hash are unchanged from versions `1.0.1` and `1.1.0`.
+Version `1.2.0` keeps the complete v1.1.1 controls, attacks, Adaptive Teleport,
+crash fixes, effects, and buffered runtime trace behavior. It adds a second
+Slashuur gameplay costume selected by holding R1 during character confirmation.
+The original white model and all existing motion/effect payloads are preserved.

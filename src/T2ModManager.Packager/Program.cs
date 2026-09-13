@@ -11,7 +11,7 @@ return await ProgramMain.RunAsync(args);
 internal static class ProgramMain
 {
     private const int SlashuurEntryId = 143;
-    private const int FinalSlashuurChunkCount = 77;
+    private const int DefaultSlashuurChunkCount = 77;
     private const string OriginalSlashuurHash =
         "e3f93aa1e63efefb403854a5eea603cc322a9de6b953de89292e804e76777451";
 
@@ -74,7 +74,11 @@ internal static class ProgramMain
                         RequireOption(options, "--output"),
                         RequireOption(options, "--version"),
                         RequireOption(options, "--description"),
-                        ParseComposableDefinition(options)).ConfigureAwait(false);
+                        ParseComposableDefinition(options),
+                        ParseOptionalPositiveInt(
+                            options,
+                            "--slashuur-chunk-count",
+                            DefaultSlashuurChunkCount)).ConfigureAwait(false);
                     break;
 
                 default:
@@ -206,7 +210,8 @@ internal static class ProgramMain
         string version = "1.0.0",
         string description = "Playable Slashuur with five boss moves and Adaptive Teleport v2. " +
                              "Does not enable MSAA, Intro Skip, widescreen, or difficulty modifications.",
-        ComposablePackageDefinition? composable = null)
+        ComposablePackageDefinition? composable = null,
+        int expectedLpacChunkCount = DefaultSlashuurChunkCount)
     {
         if (File.Exists(output))
         {
@@ -225,10 +230,10 @@ internal static class ProgramMain
         _ = PeValidator.ValidateWin32Executable(standaloneExe);
 
         LpacValidationResult lpac = LpacValidator.Validate(finalLpac);
-        if (lpac.ChunkCount != FinalSlashuurChunkCount)
+        if (lpac.ChunkCount != expectedLpacChunkCount)
         {
             throw new InvalidDataException(
-                $"Final Ultimate_Slashuur LPAC must contain {FinalSlashuurChunkCount} chunks; found {lpac.ChunkCount}.");
+                $"Final Ultimate_Slashuur LPAC must contain {expectedLpacChunkCount} chunks; found {lpac.ChunkCount}.");
         }
 
         AfsArchiveInfo archive = AfsArchive.Read(originalDat);
@@ -404,6 +409,24 @@ internal static class ProgramMain
             ? value
             : throw new ArgumentException($"Missing required option: {name}");
 
+    private static int ParseOptionalPositiveInt(
+        IReadOnlyDictionary<string, string> options,
+        string name,
+        int defaultValue)
+    {
+        if (!options.TryGetValue(name, out string? value))
+        {
+            return defaultValue;
+        }
+
+        if (!int.TryParse(value, out int result) || result <= 0)
+        {
+            throw new ArgumentException($"{name} must be a positive integer.");
+        }
+
+        return result;
+    }
+
     private static void RequireSafeIdentifier(string value, string description)
     {
         if (value.Length is < 1 or > 80 ||
@@ -474,7 +497,7 @@ internal static class ProgramMain
         Console.WriteLine("  --original-exe <untouched US TMNT2.exe> \\");
         Console.WriteLine("  --standalone-exe <Ultimate_Slashuur-only TMNT2.exe> \\");
         Console.WriteLine("  --original-dat <untouched US TMNT.DAT> \\");
-        Console.WriteLine("  --slashuur-lpac <final 77-chunk slashuur.lpac> \\");
+        Console.WriteLine("  --slashuur-lpac <final Slashuur LPAC> \\");
         Console.WriteLine("  --output <Ultimate_Slashuur.t2mod>");
         Console.WriteLine();
         Console.WriteLine("pack-exe-only \\");
@@ -502,7 +525,8 @@ internal static class ProgramMain
         Console.WriteLine("  --original-exe <untouched US TMNT2.exe> \\");
         Console.WriteLine("  --core-exe <Slashuur-capable composable-core executable> \\");
         Console.WriteLine("  --original-dat <untouched US TMNT.DAT> \\");
-        Console.WriteLine("  --slashuur-lpac <final 77-chunk slashuur.lpac> \\");
+        Console.WriteLine("  --slashuur-lpac <final Slashuur LPAC> \\");
+        Console.WriteLine("  --slashuur-chunk-count <expected count; defaults to 77> \\");
         Console.WriteLine("  --version <version> --description <description> \\");
         Console.WriteLine("  --core-id <core_family> --core-priority <0..1000> \\");
         Console.WriteLine("  --core-capabilities <comma-separated IDs> \\");

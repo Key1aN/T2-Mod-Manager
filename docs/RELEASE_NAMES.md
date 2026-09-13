@@ -40,6 +40,17 @@ application. MAP naming remains mandatory for future native TMNT2 EXE builds.
 - Slashuur native core outputs:
   `TMNT2_T2Mod_Composable_Core_Slashuur_v1_US.exe`, `.pdb`, and `.map`
 
+## Slashuur dual-costume update
+
+- Source branch: `codex/slashuur-dual-costumes-v1-us`
+- Workflow: `build-slashuur-dual-costumes-v1-us.yml`
+- Native artifact: `TMNT2-Slashuur-Dual-Costumes-v1-US-run-<run-number>`
+- Native outputs: `TMNT2_Slashuur_Dual_Costumes_v1_US.exe`, `.pdb`, and `.map`
+- Package branch: `codex/ultimate-slashuur-dual-costumes-v1-us`
+- Package: `Ultimate_Slashuur_Dual_Costumes_v1.2.0.t2mod`
+- LPAC payload: `Ultimate_Slashuur.lpac` inside the package; this is only the
+  Slashuur AFS entry, not a complete retail `TMNT.DAT`.
+
 ## Game-folder-selection fix build
 
 - Branch: `codex/t2-mod-manager-v0.1-game-folder-selection-fix`
