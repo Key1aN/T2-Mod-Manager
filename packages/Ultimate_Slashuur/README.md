@@ -22,7 +22,7 @@ and verified as PE32 x86:
 
 - Size: `4,651,008` bytes
 - SHA-256:
-  `fe290d56025a9f939c01ad31beae4f437e50eb2e4505dfd9f683e78c5577c8e5`
+  `0e926dd1e97ea6a09d155e58c390ecb2c3b0e04b4c1152196b6e49318945ed56`
 
 This core keeps the Slashuur runtime trace open and buffers gameplay
 breadcrumbs, flushing on crash, fatal report, or clean shutdown. It removes

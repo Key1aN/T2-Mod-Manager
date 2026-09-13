@@ -52,11 +52,11 @@
       "type": "apply-t2delta",
       "target": "TMNT2.exe",
       "payload": "payload/Ultimate_Slashuur.t2delta",
-      "payloadSha256": "169e90307a31879caa6908757c53aed94e92c7c0a19c8aa35b20054a095795ad",
-      "payloadSize": 1937583,
+      "payloadSha256": "6b1278492a2fabdfc4b080751ff9db087b1cc842489d909dbd0e3dcb052873d9",
+      "payloadSize": 1937580,
       "expectedInputSha256": "b827478461e1687f9404679211fc2d2d47bd7222aeb81a8554bd793575a89564",
       "expectedInputSize": 4796416,
-      "expectedOutputSha256": "fe290d56025a9f939c01ad31beae4f437e50eb2e4505dfd9f683e78c5577c8e5",
+      "expectedOutputSha256": "0e926dd1e97ea6a09d155e58c390ecb2c3b0e04b4c1152196b6e49318945ed56",
       "expectedOutputSize": 4651008
     },
     {

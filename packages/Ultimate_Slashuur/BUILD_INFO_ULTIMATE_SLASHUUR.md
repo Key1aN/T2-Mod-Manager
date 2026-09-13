@@ -3,9 +3,9 @@
 ## Package
 
 - Filename: `Ultimate_Slashuur_Dual_Costumes_v1.2.0.t2mod`
-- Size: `2,556,407` bytes
+- Size: `2,556,405` bytes
 - SHA-256:
-  `eb6274eaaaff0694f8ae0b0aa76c0de52250826a4a3a2477056accff47f525e5`
+  `41d1f149cefc5e07c208e3ad1e8205e8e55891e654341b46dce333761d2ae7f8`
 - Entries: `manifest.json`, `payload/Ultimate_Slashuur.t2delta`, and
   `payload/Ultimate_Slashuur.lpac`
 
@@ -13,13 +13,13 @@
 
 - Size: `4,651,008` bytes
 - SHA-256:
-  `fe290d56025a9f939c01ad31beae4f437e50eb2e4505dfd9f683e78c5577c8e5`
+  `0e926dd1e97ea6a09d155e58c390ecb2c3b0e04b4c1152196b6e49318945ed56`
 
 ## Executable delta
 
-- Size: `1,937,583` bytes
+- Size: `1,937,580` bytes
 - SHA-256:
-  `169e90307a31879caa6908757c53aed94e92c7c0a19c8aa35b20054a095795ad`
+  `6b1278492a2fabdfc4b080751ff9db087b1cc842489d909dbd0e3dcb052873d9`
 
 ## Final LPAC
 
