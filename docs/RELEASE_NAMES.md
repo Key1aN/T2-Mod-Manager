@@ -86,3 +86,15 @@ application. MAP naming remains mandatory for future native TMNT2 EXE builds.
   `T2-Mod-Manager-Core-v0.1-Clean-First-Run-Catalog-US.pdb`
 - MAP: not produced; this is a managed .NET/WPF application rather than a
   native TMNT2 executable build.
+
+## Clean-unchecked-first-run fix (cumulative)
+
+- Branch: `codex/t2-mod-manager-v0.2.2-clean-unchecked-first-run-us`
+- Workflow: `build-t2-mod-manager-v0.2.2-clean-unchecked-first-run-us`
+- Windows artifact:
+  `T2-Mod-Manager-v0.2.2-Clean-Unchecked-First-Run-US-win-x64-run-<run-number>`
+- Application: `T2-Mod-Manager-v0.2.2-Clean-Unchecked-First-Run-US.exe`
+- Symbols: `T2-Mod-Manager-v0.2.2-Clean-Unchecked-First-Run-US.pdb` and
+  `T2-Mod-Manager-Core-v0.2.2-Clean-Unchecked-First-Run-US.pdb`
+- MAP: not produced; this is a managed .NET/WPF application rather than a
+  native TMNT2 executable build.

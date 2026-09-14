@@ -1,6 +1,6 @@
 # T2 Mod Manager
 
-T2 Mod Manager v0.2.1 is a safety-first mod manager for the US/NA
+T2 Mod Manager v0.2.2 is a safety-first mod manager for the US/NA
 32-bit PC release of *TMNT 2: Battle Nexus*.
 
 Compatible `.t2mod` packages can be checked together. The initial composable
@@ -25,7 +25,7 @@ three brutal difficulties, and Hor+ widescreen with stretched original UI.
 
 ## Current state
 
-This source package contains the v0.2.1 architecture, UI, package validator,
+This source package contains the v0.2.2 architecture, UI, package validator,
 AFS/LPAC readers, block-delta implementation, backup/transaction engine,
 packager, and dependency/conflict model.
 
@@ -38,11 +38,12 @@ hard-coded launcher content. Selecting a mod shows its package description,
 and checkboxes activate or deactivate compatible mods together through the
 verified rebuild pipeline.
 
-The v0.2.1 dynamic-catalog migration clears inactive entries left by earlier
-launcher and package-validation runs without deleting stored packages or
-backups. The first Mods view is therefore empty, and mods appear only after the
-user imports their `.t2mod` files. Active legacy records are retained only when
-required for safe restoration.
+The v0.2.2 dynamic-catalog migration clears entries left by earlier launcher
+and package-validation runs when their saved game installation is unavailable.
+This prevents an old active package from appearing as a checked, disabled mod.
+The first Mods view is empty, and mods appear only after the user imports their
+`.t2mod` files. An active legacy record is retained only when its managed game
+installation still exists and may require safe restoration.
 
 Composable packages contain a delta from the verified retail EXE to a shared
 core plus declarative core capabilities and feature flags. Ultimate Slashuur
@@ -65,7 +66,7 @@ dotnet publish src/T2ModManager.App/T2ModManager.App.csproj `
 ```
 
 The GitHub Actions workflow publishes a self-contained, single-file Windows
-build named `T2-Mod-Manager-v0.2.1-Empty-Import-Catalog-US.exe`.
+build named `T2-Mod-Manager-v0.2.2-Clean-Unchecked-First-Run-US.exe`.
 
 ## First supported retail fingerprint
 

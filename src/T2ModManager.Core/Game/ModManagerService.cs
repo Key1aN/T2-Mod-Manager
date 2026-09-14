@@ -28,7 +28,10 @@ public sealed class ModManagerService
     public async Task<InstalledState> GetStateAsync(CancellationToken cancellationToken = default)
     {
         InstalledState state = await _stateStore.LoadAsync(cancellationToken).ConfigureAwait(false);
-        if (StateMigration.PrepareModCatalog(state))
+        bool preserveActiveRecovery =
+            state.Mods.Any(mod => mod.Active) &&
+            GameDirectoryLocator.ContainsRequiredFiles(state.GameDirectory);
+        if (StateMigration.PrepareModCatalog(state, preserveActiveRecovery))
         {
             await _stateStore.SaveAsync(state, cancellationToken).ConfigureAwait(false);
         }

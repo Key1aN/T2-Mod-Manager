@@ -4,18 +4,31 @@ namespace T2ModManager.Core.State;
 
 public static class StateMigration
 {
-    public static bool PrepareModCatalog(InstalledState state)
+    public static bool PrepareModCatalog(InstalledState state, bool preserveActiveRecovery)
     {
         if (state.ModCatalogRevision >= InstalledState.CurrentModCatalogRevision)
         {
             return false;
         }
 
-        // Earlier development builds may have populated the shared per-user catalog
-        // while validating package sets. Reset those inactive entries once for this
-        // release so its first Mods view is empty. Retain active records so the
-        // manager can still restore their game-file changes safely.
-        state.Mods.RemoveAll(mod => !mod.Active);
+        // Earlier builds shared one per-user catalog across every release. Clear it
+        // once so a new release starts with no imported or checked mods. An active
+        // record is retained only when its managed game installation still exists;
+        // otherwise the disabled checkbox can never be safely deactivated.
+        if (preserveActiveRecovery)
+        {
+            state.Mods.RemoveAll(mod => !mod.Active);
+        }
+        else
+        {
+            state.Mods.Clear();
+            state.GameDirectory = null;
+            state.GameBuildId = null;
+            state.CurrentExecutableSha256 = null;
+            state.CurrentArchiveSha256 = null;
+            state.CurrentFeatureStateSha256 = null;
+        }
+
         state.ModCatalogRevision = InstalledState.CurrentModCatalogRevision;
         return true;
     }

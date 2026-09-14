@@ -50,7 +50,7 @@ try
     LpacValidation(root);
     ConflictDetection();
     ComposableManifestValidation();
-    Console.WriteLine("All T2 Mod Manager v0.2 composable-mod core tests passed.");
+    Console.WriteLine("All T2 Mod Manager v0.2.2 composable-mod core tests passed.");
     return 0;
 }
 catch (Exception exception)
@@ -379,7 +379,7 @@ static void ModCatalogMigration()
     priorComposableRelease.Mods.Add(Installed("widescreen", active: false));
 
     Assert(
-        StateMigration.PrepareModCatalog(priorComposableRelease),
+        StateMigration.PrepareModCatalog(priorComposableRelease, preserveActiveRecovery: false),
         "The prior composable-release catalog reset did not run.");
     Assert(
         priorComposableRelease.Mods.Count == 0,
@@ -389,7 +389,9 @@ static void ModCatalogMigration()
     legacy.Mods.Add(Installed("legacy-inactive", active: false));
     legacy.Mods.Add(Installed("legacy-active", active: true));
 
-    Assert(StateMigration.PrepareModCatalog(legacy), "Legacy catalog migration did not run.");
+    Assert(
+        StateMigration.PrepareModCatalog(legacy, preserveActiveRecovery: true),
+        "Legacy catalog migration did not run.");
     Assert(
         legacy.ModCatalogRevision == InstalledState.CurrentModCatalogRevision,
         "Catalog migration revision was not recorded.");
@@ -399,11 +401,33 @@ static void ModCatalogMigration()
 
     legacy.Mods.Add(Installed("new-import", active: false));
     Assert(
-        !StateMigration.PrepareModCatalog(legacy),
+        !StateMigration.PrepareModCatalog(legacy, preserveActiveRecovery: true),
         "Catalog migration ran more than once.");
     Assert(
         legacy.Mods.Any(mod => mod.Id == "new-import"),
         "A package imported after migration did not persist.");
+
+    InstalledState unavailableActive = new()
+    {
+        ModCatalogRevision = 2,
+        GameDirectory = Path.Combine(Path.GetTempPath(), "missing-tmnt2-install"),
+        GameBuildId = "old-build",
+        CurrentExecutableSha256 = new('a', 64),
+        CurrentArchiveSha256 = new('b', 64),
+        CurrentFeatureStateSha256 = new('c', 64)
+    };
+    unavailableActive.Mods.Add(Installed("unavailable-active", active: true));
+    Assert(
+        StateMigration.PrepareModCatalog(unavailableActive, preserveActiveRecovery: false),
+        "Unavailable active-state migration did not run.");
+    Assert(unavailableActive.Mods.Count == 0, "Unavailable active package stayed checked.");
+    Assert(
+        unavailableActive.GameDirectory is null &&
+        unavailableActive.GameBuildId is null &&
+        unavailableActive.CurrentExecutableSha256 is null &&
+        unavailableActive.CurrentArchiveSha256 is null &&
+        unavailableActive.CurrentFeatureStateSha256 is null,
+        "Unavailable managed-install metadata was not cleared.");
 }
 
 static InstalledMod Installed(string id, bool active) => new()
@@ -440,6 +464,58 @@ static async Task ModCatalogMigrationPersistenceAsync(string root)
     Assert(
         reloaded.Mods.Any(mod => mod.Id == "new-import"),
         "An imported package was cleared after the one-time migration.");
+
+    string unavailableRoot = Path.Combine(root, "unavailable-active-catalog-state");
+    AppDataPaths unavailablePaths = new(unavailableRoot);
+    StateStore unavailableStore = new(unavailablePaths);
+    InstalledState unavailable = new()
+    {
+        ModCatalogRevision = 2,
+        GameDirectory = Path.Combine(root, "missing-managed-game"),
+        GameBuildId = "tmnt2-pc-us-na-retail-2004-08-19",
+        CurrentExecutableSha256 = new('a', 64),
+        CurrentArchiveSha256 = new('b', 64),
+        CurrentFeatureStateSha256 = new('c', 64)
+    };
+    unavailable.Mods.Add(Installed("Ultimate_Slashuur", active: true));
+    await unavailableStore.SaveAsync(unavailable);
+
+    InstalledState reset = await new ModManagerService(unavailableRoot).GetStateAsync();
+    Assert(reset.Mods.Count == 0, "The unavailable active package remained checked after load.");
+    Assert(reset.GameDirectory is null, "The unavailable saved game path remained selected.");
+
+    InstalledState resetPersisted = await unavailableStore.LoadAsync();
+    Assert(
+        resetPersisted.ModCatalogRevision == InstalledState.CurrentModCatalogRevision &&
+        resetPersisted.Mods.Count == 0 &&
+        resetPersisted.GameDirectory is null,
+        "The clean unchecked state was not persisted.");
+
+    string recoverableRoot = Path.Combine(root, "recoverable-active-catalog-state");
+    string recoverableGame = Path.Combine(root, "recoverable-managed-game");
+    Directory.CreateDirectory(recoverableGame);
+    await File.WriteAllBytesAsync(Path.Combine(recoverableGame, "TMNT2.exe"), [0]);
+    await File.WriteAllBytesAsync(Path.Combine(recoverableGame, "TMNT.DAT"), [0]);
+    AppDataPaths recoverablePaths = new(recoverableRoot);
+    StateStore recoverableStore = new(recoverablePaths);
+    InstalledState recoverable = new()
+    {
+        ModCatalogRevision = 2,
+        GameDirectory = recoverableGame,
+        GameBuildId = "tmnt2-pc-us-na-retail-2004-08-19",
+        CurrentExecutableSha256 = new('a', 64),
+        CurrentArchiveSha256 = new('b', 64)
+    };
+    recoverable.Mods.Add(Installed("active-recovery", active: true));
+    recoverable.Mods.Add(Installed("inactive-old-import", active: false));
+    await recoverableStore.SaveAsync(recoverable);
+
+    InstalledState preserved = await new ModManagerService(recoverableRoot).GetStateAsync();
+    Assert(
+        preserved.Mods.Count == 1 &&
+        preserved.Mods[0].Id == "active-recovery" &&
+        preserved.Mods[0].Active,
+        "A recoverable active installation was not retained safely.");
 }
 
 static ModManifest Manifest(

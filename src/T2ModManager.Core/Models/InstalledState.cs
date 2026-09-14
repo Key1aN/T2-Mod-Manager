@@ -2,7 +2,7 @@ namespace T2ModManager.Core.Models;
 
 public sealed class InstalledState
 {
-    public const int CurrentModCatalogRevision = 2;
+    public const int CurrentModCatalogRevision = 3;
 
     public int SchemaVersion { get; init; } = 1;
     public int ModCatalogRevision { get; set; }
