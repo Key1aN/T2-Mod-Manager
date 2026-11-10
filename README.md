@@ -1,6 +1,6 @@
 # T2 Mod Manager
 
-T2 Mod Manager v0.2.3 is a portable, safety-first mod manager for the US/NA
+T2 Mod Manager v0.2.4 is a portable, safety-first mod manager for the US/NA
 32-bit PC release of *TMNT 2: Battle Nexus*.
 
 Compatible `.t2mod` packages can be checked together. The initial composable
@@ -67,6 +67,14 @@ current `TMNT2.exe` SHA-256 so the matching PDB/MAP can be selected. The ZIP
 contains no retail EXE or DAT. Games launched with **Launch Game** are monitored:
 a non-zero exit code or a new crash/fatal file is logged and opens the log page.
 
+## Single game instance (v0.2.4)
+
+Launch Game is locked while the launched game runs, and refuses to start when a
+`TMNT2.exe` from the managed folder is already running. Verify, Add package,
+mod checkboxes, and Restore Vanilla are also locked while the game runs, because
+game files must not be replaced under a running game. Crash/fatal files are
+attributed to a run only when they were written between its launch and exit.
+
 ## Current state
 
 This source package contains the v0.2.3 architecture, UI, package validator,
@@ -110,7 +118,7 @@ dotnet publish src/T2ModManager.App/T2ModManager.App.csproj `
 ```
 
 The GitHub Actions workflow publishes a self-contained Windows build named
-`T2-Mod-Manager-v0.2.3-Portable-Logs-US.exe` with its native WPF DLLs beside it.
+`T2-Mod-Manager-v0.2.4-Single-Launch-US.exe` with its native WPF DLLs beside it.
 
 ## First supported retail fingerprint
 

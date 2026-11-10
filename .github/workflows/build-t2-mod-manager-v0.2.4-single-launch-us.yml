@@ -1,0 +1,53 @@
+name: Build T2 Mod Manager v0.2.4 Single Launch US
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/t2-mod-manager-v0.2.4-single-launch-us]
+  pull_request:
+
+jobs:
+  build-test-package:
+    runs-on: windows-2022
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Restore
+        run: dotnet restore T2-Mod-Manager.slnx
+      - name: Build and retain uniquely named symbols
+        run: dotnet build T2-Mod-Manager.slnx --configuration Release --no-restore
+      - name: Run composable core safety tests
+        run: dotnet run --project tests/T2ModManager.Core.Tests --configuration Release --no-build
+      - name: Publish Windows x64 app
+        run: dotnet publish src/T2ModManager.App --configuration Release --runtime win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=false --output publish/T2-Mod-Manager-v0.2.4-Single-Launch-US
+      - name: Write checksums
+        shell: pwsh
+        run: Get-ChildItem publish/T2-Mod-Manager-v0.2.4-Single-Launch-US -File | Get-FileHash -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  $($_.Path | Split-Path -Leaf)" } | Set-Content publish/T2-Mod-Manager-v0.2.4-Single-Launch-US/SHA256SUMS.txt
+      - name: Publish build to drop branch
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $drop = Join-Path $env:RUNNER_TEMP "drop"
+          New-Item -ItemType Directory -Force -Path $drop | Out-Null
+          Compress-Archive -Path "publish/T2-Mod-Manager-v0.2.4-Single-Launch-US/*" -DestinationPath "$drop/T2-Mod-Manager-v0.2.4-Single-Launch-US-win-x64.zip"
+          Copy-Item "publish/T2-Mod-Manager-v0.2.4-Single-Launch-US/SHA256SUMS.txt" $drop
+          (Get-FileHash "$drop/T2-Mod-Manager-v0.2.4-Single-Launch-US-win-x64.zip" -Algorithm SHA256).Hash.ToLowerInvariant() + "  T2-Mod-Manager-v0.2.4-Single-Launch-US-win-x64.zip" | Set-Content "$drop/ZIP-SHA256.txt"
+          Set-Location $drop
+          git init -q
+          git config core.autocrlf false
+          "* -text" | Set-Content .gitattributes
+          git checkout -q -b drop
+          git add -A
+          git -c user.name="github-actions" -c user.email="github-actions@users.noreply.github.com" commit -q -m "Build outputs for $env:GITHUB_SHA (run $env:GITHUB_RUN_NUMBER)"
+          git push -q -f "https://x-access-token:$env:GH_TOKEN@github.com/$env:GITHUB_REPOSITORY.git" drop:refs/heads/build-drops/t2-mod-manager-v0.2.4-single-launch-us
+      - uses: actions/upload-artifact@v4
+        with:
+          name: T2-Mod-Manager-v0.2.4-Single-Launch-US-win-x64-run-${{ github.run_number }}
+          path: publish/T2-Mod-Manager-v0.2.4-Single-Launch-US
+          if-no-files-found: error

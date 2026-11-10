@@ -19,7 +19,7 @@
             </Grid.ColumnDefinitions>
             <StackPanel>
                 <TextBlock Text="T2 Mod Manager" FontSize="27" FontWeight="Bold"/>
-                <TextBlock Text="Version 0.2.3 · Portable · TMNT 2: Battle Nexus · US/NA PC" Foreground="{StaticResource MutedBrush}"
+                <TextBlock Text="Version 0.2.4 · Portable · TMNT 2: Battle Nexus · US/NA PC" Foreground="{StaticResource MutedBrush}"
                            FontSize="14" Margin="0,5,0,0"/>
             </StackPanel>
             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">

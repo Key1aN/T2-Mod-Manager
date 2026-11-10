@@ -20,6 +20,7 @@ public partial class MainWindow : Window
     private string? _selectedModId;
     private bool _initialStateLoaded;
     private bool _isBusy;
+    private bool _gameRunning;
 
     public MainWindow()
     {
@@ -118,7 +119,7 @@ public partial class MainWindow : Window
             GameDirectoryLocator.PathsEqual(_state.GameDirectory, _selectedGameDirectory);
         List<ModListEntry> entries = _state.Mods
             .OrderBy(mod => mod.DisplayName, StringComparer.CurrentCultureIgnoreCase)
-            .Select(mod => new ModListEntry(mod, !_isBusy && initialized))
+            .Select(mod => new ModListEntry(mod, !_isBusy && !_gameRunning && initialized))
             .ToList();
         ModsList.ItemsSource = entries;
         NoModsText.Visibility = entries.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -137,10 +138,14 @@ public partial class MainWindow : Window
         }
 
         initialized &= _serviceReady;
-        InstallPackageButton.IsEnabled = !_isBusy && initialized;
-        RestoreButton.IsEnabled = !_isBusy && initialized;
-        LaunchButton.IsEnabled = !_isBusy && initialized;
-        VerifyButton.IsEnabled = !_isBusy && _serviceReady && _selectedGameDirectory is not null;
+        // The game must not run while files are rebuilt or replaced (safety model invariant 8),
+        // and only one game instance may be launched at a time.
+        bool idle = !_isBusy && !_gameRunning;
+        InstallPackageButton.IsEnabled = idle && initialized;
+        RestoreButton.IsEnabled = idle && initialized;
+        LaunchButton.IsEnabled = idle && initialized;
+        LaunchButton.Content = _gameRunning ? "Game Running" : "Launch Game";
+        VerifyButton.IsEnabled = idle && _serviceReady && _selectedGameDirectory is not null;
     }
 
     private void SelectFolderButton_Click(object sender, RoutedEventArgs e)
@@ -246,17 +251,31 @@ public partial class MainWindow : Window
     {
         _ = sender;
         _ = e;
-        if (_state.GameDirectory is null) return;
+        if (_state.GameDirectory is null || _gameRunning || _isBusy) return;
         string gameDirectory = _state.GameDirectory;
         string executable = System.IO.Path.Combine(gameDirectory, "TMNT2.exe");
         string activeMods = string.Join(", ", _state.Mods.Where(mod => mod.Active).Select(mod => $"{mod.Id} {mod.Version}"));
+
+        // Set before any await so a fast second click cannot start a second instance.
+        _gameRunning = true;
+        UpdateInterface();
         try
         {
+            int running = CountRunningGameProcesses(executable);
+            if (running > 0)
+            {
+                ManagerLog.Warning($"Launch refused: {running} TMNT2.exe instance(s) from this game folder are already running.");
+                MessageBox.Show(this,
+                    "TMNT 2 is already running from this game folder. Close it before launching again.",
+                    "T2 Mod Manager", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
             string hash = await Sha256Service.HashFileAsync(executable);
             ManagerLog.Info(
                 $"Launching game \"{executable}\" (SHA-256 {hash}); active mods: " +
                 $"{(activeMods.Length == 0 ? "none" : activeMods)}.");
-            DateTime launchedAt = DateTime.Now;
+            DateTime launchedAt = DateTime.Now.AddSeconds(-1);
             Process? process = Process.Start(new ProcessStartInfo(executable)
             {
                 WorkingDirectory = gameDirectory,
@@ -268,7 +287,7 @@ public partial class MainWindow : Window
                 return;
             }
 
-            StatusText.Text = "Game running";
+            StatusText.Text = "Game running; mod changes are locked until it closes";
             await MonitorGameAsync(process, gameDirectory, launchedAt);
         }
         catch (Exception exception)
@@ -277,6 +296,40 @@ public partial class MainWindow : Window
             MessageBox.Show(this, exception.Message, "T2 Mod Manager",
                 MessageBoxButton.OK, MessageBoxImage.Error);
         }
+        finally
+        {
+            _gameRunning = false;
+            UpdateInterface();
+        }
+    }
+
+    /// <summary>Counts TMNT2.exe processes started from this game folder (unreadable paths count as running).</summary>
+    private static int CountRunningGameProcesses(string executable)
+    {
+        int count = 0;
+        foreach (Process candidate in Process.GetProcessesByName("TMNT2"))
+        {
+            using (candidate)
+            {
+                try
+                {
+                    string? path = candidate.MainModule?.FileName;
+                    if (path is null ||
+                        string.Equals(System.IO.Path.GetFullPath(path), System.IO.Path.GetFullPath(executable),
+                            StringComparison.OrdinalIgnoreCase))
+                    {
+                        count++;
+                    }
+                }
+                catch (Exception exception) when (
+                    exception is System.ComponentModel.Win32Exception or InvalidOperationException or NotSupportedException)
+                {
+                    count++;
+                }
+            }
+        }
+
+        return count;
     }
 
     private async Task MonitorGameAsync(Process process, string gameDirectory, DateTime launchedAt)
@@ -285,10 +338,13 @@ public partial class MainWindow : Window
         {
             await process.WaitForExitAsync();
             int exitCode = process.ExitCode;
+            DateTime exitedAt = DateTime.Now.AddSeconds(1);
             string code = $"{exitCode} (0x{unchecked((uint)exitCode):X8})";
+            // Only crash files written during this run belong to it.
             List<DiagnosticFile> newCrashFiles = DiagnosticFiles.Find(_service.Paths, gameDirectory)
                 .Where(file => file.Source == DiagnosticOrigin.GameCrash &&
-                               file.LastWriteTime >= launchedAt.AddSeconds(-2))
+                               file.LastWriteTime >= launchedAt &&
+                               file.LastWriteTime <= exitedAt)
                 .ToList();
             if (exitCode == 0 && newCrashFiles.Count == 0)
             {
@@ -297,11 +353,20 @@ public partial class MainWindow : Window
                 return;
             }
 
-            string crashList = newCrashFiles.Count == 0
-                ? "no new crash files were written"
-                : "new crash files: " + string.Join(", ", newCrashFiles.Select(file => file.DisplayName));
-            ManagerLog.Error($"Game exited abnormally with exit code {code}; {crashList}.");
-            StatusText.Text = $"Game exited abnormally (code 0x{unchecked((uint)exitCode):X8}); open Logs";
+            string crashList = string.Join(", ", newCrashFiles.Select(file => file.DisplayName));
+            if (exitCode == 0)
+            {
+                ManagerLog.Warning($"Game closed with exit code {code} but wrote crash files during this run: {crashList}.");
+                StatusText.Text = "Game closed but wrote crash files; open Logs";
+            }
+            else
+            {
+                ManagerLog.Error(
+                    $"Game exited abnormally with exit code {code}; " +
+                    (newCrashFiles.Count == 0 ? "no crash files were written during this run." : $"crash files from this run: {crashList}."));
+                StatusText.Text = $"Game exited abnormally (code 0x{unchecked((uint)exitCode):X8}); open Logs";
+            }
+
             OpenLogsWindow();
         }
     }
@@ -330,7 +395,17 @@ public partial class MainWindow : Window
 
     private async Task RunOperationAsync(string name, Func<IProgress<OperationProgress>, Task> operation)
     {
-        if (_isBusy) return;
+        if (_isBusy || _gameRunning) return;
+        if (_state.GameDirectory is not null &&
+            CountRunningGameProcesses(System.IO.Path.Combine(_state.GameDirectory, "TMNT2.exe")) > 0)
+        {
+            ManagerLog.Warning($"Operation refused while the game is running: {name}");
+            MessageBox.Show(this,
+                "Close TMNT 2 before changing mods. Game files cannot be replaced while the game is running.",
+                "T2 Mod Manager", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
         _isBusy = true;
         Progress.Visibility = Visibility.Visible;
         Progress.Value = 0;

@@ -112,3 +112,11 @@ application. MAP naming remains mandatory for future native TMNT2 EXE builds.
 - Portable data folder: `T2-Mod-Manager-Data` beside the EXE
 - MAP: not produced because the launcher is a managed .NET/WPF application.
 
+## v0.2.4 single launch
+
+- Branch: `claude/t2-mod-manager-v0.2.4-single-launch-us`
+- Workflow: `build-t2-mod-manager-v0.2.4-single-launch-us`
+- Windows artifact: `T2-Mod-Manager-v0.2.4-Single-Launch-US-win-x64-run-<run-number>`
+- Drop branch: `build-drops/t2-mod-manager-v0.2.4-single-launch-us`
+- Application: `T2-Mod-Manager-v0.2.4-Single-Launch-US.exe` (plus native WPF DLLs)
+

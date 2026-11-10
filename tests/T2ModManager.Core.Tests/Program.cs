@@ -53,7 +53,7 @@ try
     ComposableManifestValidation();
     await PortableDataMigrationAsync(root);
     await DiagnosticFilesAsync(root);
-    Console.WriteLine("All T2 Mod Manager v0.2.3 portable/logs composable-mod core tests passed.");
+    Console.WriteLine("All T2 Mod Manager v0.2.4 composable-mod core tests passed.");
     return 0;
 }
 catch (Exception exception)
