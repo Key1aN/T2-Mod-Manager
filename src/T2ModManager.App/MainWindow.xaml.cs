@@ -287,7 +287,7 @@ public partial class MainWindow : Window
             int exitCode = process.ExitCode;
             string code = $"{exitCode} (0x{unchecked((uint)exitCode):X8})";
             List<DiagnosticFile> newCrashFiles = DiagnosticFiles.Find(_service.Paths, gameDirectory)
-                .Where(file => file.Source == DiagnosticSource.GameCrash &&
+                .Where(file => file.Source == DiagnosticOrigin.GameCrash &&
                                file.LastWriteTime >= launchedAt.AddSeconds(-2))
                 .ToList();
             if (exitCode == 0 && newCrashFiles.Count == 0)

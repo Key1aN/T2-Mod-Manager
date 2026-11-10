@@ -36,10 +36,10 @@ public partial class LogsWindow : Window
         NoFilesText.Visibility = entries.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         FilesList.SelectedItem =
             entries.FirstOrDefault(entry => string.Equals(entry.File.FullPath, selectedPath, StringComparison.OrdinalIgnoreCase))
-            ?? entries.FirstOrDefault(entry => entry.File.Source == DiagnosticSource.GameCrash && !entry.File.IsBinary)
+            ?? entries.FirstOrDefault(entry => entry.File.Source == DiagnosticOrigin.GameCrash && !entry.File.IsBinary)
             ?? entries.FirstOrDefault();
 
-        int crashes = entries.Count(entry => entry.File.Source == DiagnosticSource.GameCrash);
+        int crashes = entries.Count(entry => entry.File.Source == DiagnosticOrigin.GameCrash);
         StatusText.Text =
             $"{entries.Count} file(s) · {crashes} crash file(s) · Manager data: {_paths.Root}" +
             (_state.GameDirectory is null ? " · No game folder selected" : $" · Game: {_state.GameDirectory}");
@@ -136,13 +136,13 @@ public partial class LogsWindow : Window
         public string Details =>
             $"{SourceLabel} · {File.LastWriteTime:yyyy-MM-dd HH:mm:ss} · {FormatSize(File.Size)}";
 
-        public Brush DetailBrush => File.Source == DiagnosticSource.GameCrash ? CrashBrush : MutedBrush;
+        public Brush DetailBrush => File.Source == DiagnosticOrigin.GameCrash ? CrashBrush : MutedBrush;
 
         private string SourceLabel => File.Source switch
         {
-            DiagnosticSource.Manager => "Manager",
-            DiagnosticSource.GameCrash => File.IsBinary ? "Game crash dump" : "Game crash",
-            DiagnosticSource.ManagerState => "Installed mod state",
+            DiagnosticOrigin.Manager => "Manager",
+            DiagnosticOrigin.GameCrash => File.IsBinary ? "Game crash dump" : "Game crash",
+            DiagnosticOrigin.ManagerState => "Installed mod state",
             _ => "Game"
         };
 

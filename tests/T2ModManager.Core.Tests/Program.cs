@@ -737,11 +737,11 @@ static async Task DiagnosticFilesAsync(string root)
     await File.WriteAllBytesAsync(Path.Combine(game, "TMNT.DAT"), [0]);
 
     IReadOnlyList<DiagnosticFile> files = DiagnosticFiles.Find(paths, game);
-    Assert(files.Count(file => file.Source == DiagnosticSource.GameCrash) == 3 &&
-           files.Count(file => file.Source == DiagnosticSource.GameCrash && file.IsBinary) == 1 &&
-           files.Any(file => file.Source == DiagnosticSource.Game && file.DisplayName == "TMNT2_Slashuur_trace.log") &&
-           files.Any(file => file.Source == DiagnosticSource.ManagerState && file.DisplayName == "features.txt") &&
-           files.Any(file => file.Source == DiagnosticSource.Manager),
+    Assert(files.Count(file => file.Source == DiagnosticOrigin.GameCrash) == 3 &&
+           files.Count(file => file.Source == DiagnosticOrigin.GameCrash && file.IsBinary) == 1 &&
+           files.Any(file => file.Source == DiagnosticOrigin.Game && file.DisplayName == "TMNT2_Slashuur_trace.log") &&
+           files.Any(file => file.Source == DiagnosticOrigin.ManagerState && file.DisplayName == "features.txt") &&
+           files.Any(file => file.Source == DiagnosticOrigin.Manager),
         "Diagnostic files were not classified correctly.");
 
     string big = Path.Combine(game, "big.log");

@@ -7,7 +7,7 @@ using T2ModManager.Core.State;
 
 namespace T2ModManager.Core.Diagnostics;
 
-public enum DiagnosticSource
+public enum DiagnosticOrigin
 {
     Manager,
     Game,
@@ -18,7 +18,7 @@ public enum DiagnosticSource
 public sealed record DiagnosticFile(
     string DisplayName,
     string FullPath,
-    DiagnosticSource Source,
+    DiagnosticOrigin Source,
     bool IsBinary,
     long Size,
     DateTime LastWriteTime);
@@ -36,26 +36,26 @@ public static class DiagnosticFiles
     public static IReadOnlyList<DiagnosticFile> Find(AppDataPaths paths, string? gameDirectory)
     {
         List<DiagnosticFile> files = [];
-        AddFiles(files, paths.LogsDirectory, "manager-*.log", DiagnosticSource.Manager, binary: false);
+        AddFiles(files, paths.LogsDirectory, "manager-*.log", DiagnosticOrigin.Manager, binary: false);
 
         if (!string.IsNullOrWhiteSpace(gameDirectory) && Directory.Exists(gameDirectory))
         {
-            AddFiles(files, gameDirectory, "TMNT2_crash_*.log", DiagnosticSource.GameCrash, binary: false);
-            AddFiles(files, gameDirectory, "TMNT2_fatal_*.log", DiagnosticSource.GameCrash, binary: false);
-            AddFiles(files, gameDirectory, "TMNT2_crash_*.dmp", DiagnosticSource.GameCrash, binary: true);
+            AddFiles(files, gameDirectory, "TMNT2_crash_*.log", DiagnosticOrigin.GameCrash, binary: false);
+            AddFiles(files, gameDirectory, "TMNT2_fatal_*.log", DiagnosticOrigin.GameCrash, binary: false);
+            AddFiles(files, gameDirectory, "TMNT2_crash_*.dmp", DiagnosticOrigin.GameCrash, binary: true);
             foreach (string path in SafeEnumerate(gameDirectory, "*.log"))
             {
                 string name = Path.GetFileName(path);
                 if (!name.StartsWith("TMNT2_crash_", StringComparison.OrdinalIgnoreCase) &&
                     !name.StartsWith("TMNT2_fatal_", StringComparison.OrdinalIgnoreCase))
                 {
-                    Add(files, path, DiagnosticSource.Game, binary: false);
+                    Add(files, path, DiagnosticOrigin.Game, binary: false);
                 }
             }
 
             string managerDirectory = new GameInstallation(gameDirectory).ManagerDirectory;
-            AddFiles(files, managerDirectory, "features.txt", DiagnosticSource.ManagerState, binary: false);
-            AddFiles(files, managerDirectory, "transaction.json", DiagnosticSource.ManagerState, binary: false);
+            AddFiles(files, managerDirectory, "features.txt", DiagnosticOrigin.ManagerState, binary: false);
+            AddFiles(files, managerDirectory, "transaction.json", DiagnosticOrigin.ManagerState, binary: false);
         }
 
         return files
@@ -116,8 +116,8 @@ public static class DiagnosticFiles
 
                 string folder = file.Source switch
                 {
-                    DiagnosticSource.Manager => "manager/logs",
-                    DiagnosticSource.ManagerState => "game/.t2-mod-manager",
+                    DiagnosticOrigin.Manager => "manager/logs",
+                    DiagnosticOrigin.ManagerState => "game/.t2-mod-manager",
                     _ => "game"
                 };
                 AddEntry(zip, file.FullPath, $"{folder}/{file.DisplayName}");
@@ -218,7 +218,7 @@ public static class DiagnosticFiles
         List<DiagnosticFile> files,
         string directory,
         string pattern,
-        DiagnosticSource source,
+        DiagnosticOrigin source,
         bool binary)
     {
         foreach (string path in SafeEnumerate(directory, pattern))
@@ -227,7 +227,7 @@ public static class DiagnosticFiles
         }
     }
 
-    private static void Add(List<DiagnosticFile> files, string path, DiagnosticSource source, bool binary)
+    private static void Add(List<DiagnosticFile> files, string path, DiagnosticOrigin source, bool binary)
     {
         try
         {
