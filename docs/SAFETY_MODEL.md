@@ -44,3 +44,11 @@ Two enabled mods cannot claim the same exclusive resource. A future trusted
 merge handler can explicitly convert selected resource types from exclusive
 to mergeable; packages cannot provide executable merge code themselves.
 
+## Portable data (v0.2.3)
+
+Manager state, vanilla backups, imported packages, logs, and reports live in
+`T2-Mod-Manager-Data` beside the manager EXE. Legacy per-user data is copied
+once, never modified or deleted, and the copied backup must pass the same size
+and SHA-256 verification before it is used. The state file is written last so an
+interrupted migration resumes on the next start.
+

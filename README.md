@@ -1,6 +1,6 @@
 # T2 Mod Manager
 
-T2 Mod Manager v0.2.2 is a safety-first mod manager for the US/NA
+T2 Mod Manager v0.2.3 is a portable, safety-first mod manager for the US/NA
 32-bit PC release of *TMNT 2: Battle Nexus*.
 
 Compatible `.t2mod` packages can be checked together. The initial composable
@@ -23,9 +23,53 @@ three brutal difficulties, and Hor+ widescreen with stretched original UI.
 - Selected feature flags are installed and recovered in the same transaction
   as the EXE and DAT.
 
+## Portable data (v0.2.3)
+
+The manager writes nothing to the Windows user profile. All manager data lives
+in `T2-Mod-Manager-Data` beside the manager EXE:
+
+| Path | Contents |
+| --- | --- |
+| `T2-Mod-Manager-Data\state.json` | Selected game folder, imported mods, checked state |
+| `T2-Mod-Manager-Data\backups\<build>\vanilla\` | Immutable verified retail `TMNT2.exe` and `TMNT.DAT` |
+| `T2-Mod-Manager-Data\packages\` | Imported `.t2mod` copies |
+| `T2-Mod-Manager-Data\logs\manager-YYYYMMDD.log` | Manager activity and errors (30 days kept) |
+| `T2-Mod-Manager-Data\reports\` | Diagnostic report ZIPs |
+
+Package paths are stored relative to that folder, so the whole manager folder
+can be moved or carried on another drive. The selected game folder is stored as
+an absolute path; if it moves, select it again while all mods are inactive. The
+game folder still holds `.t2-mod-manager\` (`features.txt`, journal, same-volume
+staging, rollback) because the game reads the feature flags at runtime.
+
+On the first v0.2.3 start, data from the old per-user folder
+`%LOCALAPPDATA%\T2-Mod-Manager` is copied once into the portable folder. The old
+folder is never modified or deleted; the copied vanilla backup is hash-verified
+before use like any other backup. The manager folder must be writable (do not
+place it in Program Files).
+
+The published app is a single EXE plus a few native WPF DLLs in the same folder
+(`IncludeNativeLibrariesForSelfExtract=false`), so .NET does not extract native
+libraries into `%TEMP%`. Keep the published folder together.
+
+## Logs and crash reports (v0.2.3)
+
+**Logs** in the header opens the log page. It lists, newest first:
+
+- manager logs (every operation, progress step, and full exception details);
+- game files written beside `TMNT2.exe`: `TMNT2_Slashuur_trace.log`,
+  `TMNT2_crash_*.log`, `TMNT2_crash_*.dmp`, `TMNT2_fatal_*.log`, other `*.log`;
+- the installed `.t2-mod-manager\features.txt` and `transaction.json`.
+
+**Create Report** writes one ZIP to `T2-Mod-Manager-Data\reports\` containing those
+files (newest five dumps), `state.json`, and `system-info.txt` with the exact
+current `TMNT2.exe` SHA-256 so the matching PDB/MAP can be selected. The ZIP
+contains no retail EXE or DAT. Games launched with **Launch Game** are monitored:
+a non-zero exit code or a new crash/fatal file is logged and opens the log page.
+
 ## Current state
 
-This source package contains the v0.2.2 architecture, UI, package validator,
+This source package contains the v0.2.3 architecture, UI, package validator,
 AFS/LPAC readers, block-delta implementation, backup/transaction engine,
 packager, and dependency/conflict model.
 
@@ -65,8 +109,8 @@ dotnet publish src/T2ModManager.App/T2ModManager.App.csproj `
   -c Release -r win-x64 --self-contained true
 ```
 
-The GitHub Actions workflow publishes a self-contained, single-file Windows
-build named `T2-Mod-Manager-v0.2.2-Clean-Unchecked-First-Run-US.exe`.
+The GitHub Actions workflow publishes a self-contained Windows build named
+`T2-Mod-Manager-v0.2.3-Portable-Logs-US.exe` with its native WPF DLLs beside it.
 
 ## First supported retail fingerprint
 

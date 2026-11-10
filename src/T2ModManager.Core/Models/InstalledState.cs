@@ -21,7 +21,7 @@ public sealed class InstalledMod
     public required string DisplayName { get; init; }
     public required string Version { get; init; }
     public string? Description { get; set; }
-    public required string PackagePath { get; init; }
+    public required string PackagePath { get; set; }
     public bool Active { get; set; }
     public DateTimeOffset InstalledAtUtc { get; init; } = DateTimeOffset.UtcNow;
 }

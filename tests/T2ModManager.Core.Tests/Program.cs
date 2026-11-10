@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using T2ModManager.Core.Archives;
 using T2ModManager.Core.Conflict;
+using T2ModManager.Core.Diagnostics;
 using T2ModManager.Core.Game;
 using T2ModManager.Core.Hashing;
 using T2ModManager.Core.Models;
@@ -50,7 +51,9 @@ try
     LpacValidation(root);
     ConflictDetection();
     ComposableManifestValidation();
-    Console.WriteLine("All T2 Mod Manager v0.2.2 composable-mod core tests passed.");
+    await PortableDataMigrationAsync(root);
+    await DiagnosticFilesAsync(root);
+    Console.WriteLine("All T2 Mod Manager v0.2.3 portable/logs composable-mod core tests passed.");
     return 0;
 }
 catch (Exception exception)
@@ -620,5 +623,148 @@ static void Assert(bool condition, string message)
     if (!condition)
     {
         throw new InvalidOperationException(message);
+    }
+}
+
+static async Task PortableDataMigrationAsync(string root)
+{
+    // The default data root is beside the manager executable, never the user profile.
+    string defaultRoot = new AppDataPaths().Root;
+    Assert(
+        defaultRoot.StartsWith(Path.TrimEndingDirectorySeparator(AppContext.BaseDirectory), StringComparison.OrdinalIgnoreCase) &&
+        Path.GetFileName(defaultRoot) == AppDataPaths.PortableFolderName,
+        "The default manager data folder is not portable.");
+    string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+    Assert(
+        string.IsNullOrEmpty(localAppData) ||
+        !defaultRoot.StartsWith(Path.Combine(localAppData, AppDataPaths.LegacyFolderName), StringComparison.OrdinalIgnoreCase),
+        "The default manager data folder still points at %LOCALAPPDATA%.");
+
+    string legacyRoot = Path.Combine(root, "legacy-localappdata", AppDataPaths.LegacyFolderName);
+    AppDataPaths legacy = new(legacyRoot);
+    legacy.EnsureCreated();
+    string legacyPackage = Path.Combine(legacy.PackagesDirectory, "Debug_Tools_F4", "1.2.4", "Debug_Tools_F4.t2mod");
+    Directory.CreateDirectory(Path.GetDirectoryName(legacyPackage)!);
+    await File.WriteAllBytesAsync(legacyPackage, [1, 2, 3, 4]);
+    string legacyBackup = Path.Combine(legacy.BackupsDirectory, "build", "vanilla", "TMNT2.exe");
+    Directory.CreateDirectory(Path.GetDirectoryName(legacyBackup)!);
+    await File.WriteAllBytesAsync(legacyBackup, [5, 6, 7]);
+    string gameDirectory = Path.Combine(root, "portable-game");
+    InstalledState legacyState = new()
+    {
+        ModCatalogRevision = InstalledState.CurrentModCatalogRevision,
+        GameDirectory = gameDirectory
+    };
+    legacyState.Mods.Add(new InstalledMod
+    {
+        Id = "Debug_Tools_F4",
+        DisplayName = "Debug Tools",
+        Version = "1.2.4",
+        PackagePath = legacyPackage,
+        Active = false
+    });
+    // Write the legacy file exactly as v0.2.2 did: an absolute package path.
+    await File.WriteAllTextAsync(
+        legacy.StateFile,
+        System.Text.Json.JsonSerializer.Serialize(legacyState, ManifestSerializer.JsonOptions));
+    string legacyStateBefore = await File.ReadAllTextAsync(legacy.StateFile);
+
+    AppDataPaths portable = new(Path.Combine(root, "manager-folder", AppDataPaths.PortableFolderName));
+    PortableMigrationResult result = await PortableDataMigration.MigrateIfNeededAsync(portable, legacyRoot);
+    Assert(result.Outcome == PortableMigrationOutcome.Migrated && result.CopiedFiles == 2,
+        "Legacy per-user data was not migrated.");
+    Assert(File.Exists(Path.Combine(portable.BackupsDirectory, "build", "vanilla", "TMNT2.exe")),
+        "The legacy vanilla backup was not copied.");
+    Assert(File.Exists(Path.Combine(portable.Root, PortableDataMigration.MarkerFileName)),
+        "The migration marker was not written.");
+    Assert(File.Exists(legacyPackage) && File.Exists(legacyBackup) &&
+           await File.ReadAllTextAsync(legacy.StateFile) == legacyStateBefore,
+        "The legacy folder was modified.");
+
+    InstalledState migrated = await new StateStore(portable).LoadAsync();
+    string expectedPackage = Path.Combine(portable.PackagesDirectory, "Debug_Tools_F4", "1.2.4", "Debug_Tools_F4.t2mod");
+    Assert(migrated.Mods.Count == 1 &&
+           string.Equals(migrated.Mods[0].PackagePath, expectedPackage, StringComparison.OrdinalIgnoreCase) &&
+           File.Exists(migrated.Mods[0].PackagePath) &&
+           migrated.GameDirectory == gameDirectory,
+        "The migrated state does not point at the portable package copy.");
+    string storedJson = await File.ReadAllTextAsync(portable.StateFile);
+    Assert(!storedJson.Contains(legacyRoot.Replace("\\", "\\\\"), StringComparison.OrdinalIgnoreCase) &&
+           !storedJson.Contains(portable.Root.Replace("\\", "\\\\"), StringComparison.OrdinalIgnoreCase),
+        "The portable state file stores absolute manager paths.");
+
+    // Moving the whole manager folder keeps the mod catalog usable.
+    string movedRoot = Path.Combine(root, "moved-manager-folder", AppDataPaths.PortableFolderName);
+    Directory.CreateDirectory(Path.GetDirectoryName(movedRoot)!);
+    Directory.Move(portable.Root, movedRoot);
+    InstalledState moved = await new StateStore(new AppDataPaths(movedRoot)).LoadAsync();
+    Assert(File.Exists(moved.Mods[0].PackagePath), "Package paths broke after moving the portable folder.");
+
+    PortableMigrationResult second = await PortableDataMigration.MigrateIfNeededAsync(new AppDataPaths(movedRoot), legacyRoot);
+    Assert(second.Outcome == PortableMigrationOutcome.NotNeeded, "Migration ran again over existing portable data.");
+    PortableMigrationResult none = await PortableDataMigration.MigrateIfNeededAsync(
+        new AppDataPaths(Path.Combine(root, "fresh-portable")),
+        Path.Combine(root, "no-legacy-here"));
+    Assert(none.Outcome == PortableMigrationOutcome.NotNeeded &&
+           !File.Exists(new AppDataPaths(Path.Combine(root, "fresh-portable")).StateFile),
+        "A fresh portable install without legacy data was not left empty.");
+
+    string outside = Path.Combine(root, "elsewhere", "x.t2mod");
+    Assert(new AppDataPaths(movedRoot).ToStoredPath(outside) == Path.GetFullPath(outside),
+        "A path outside the portable folder was made relative.");
+}
+
+static async Task DiagnosticFilesAsync(string root)
+{
+    AppDataPaths paths = new(Path.Combine(root, "diagnostics", AppDataPaths.PortableFolderName));
+    paths.EnsureCreated();
+    ManagerLog.Initialize(paths.LogsDirectory);
+    ManagerLog.Info("diagnostics test entry");
+    ManagerLog.Error("diagnostics test failure", new InvalidOperationException("boom"));
+    string log = await File.ReadAllTextAsync(ManagerLog.CurrentLogPath!);
+    Assert(log.Contains("[INFO] diagnostics test entry", StringComparison.Ordinal) &&
+           log.Contains("System.InvalidOperationException: boom", StringComparison.Ordinal),
+        "The manager log did not record entries with exception details.");
+
+    string game = Path.Combine(root, "diagnostics-game");
+    Directory.CreateDirectory(Path.Combine(game, ".t2-mod-manager"));
+    await File.WriteAllTextAsync(Path.Combine(game, "TMNT2_Slashuur_trace.log"), "trace\r\n");
+    await File.WriteAllTextAsync(Path.Combine(game, "TMNT2_crash_20261110_010203_004.log"), "EXCEPTION_ACCESS_VIOLATION\r\n");
+    await File.WriteAllTextAsync(Path.Combine(game, "TMNT2_fatal_20261110_010203_005.log"), "fatal\r\n");
+    await File.WriteAllBytesAsync(Path.Combine(game, "TMNT2_crash_20261110_010203_004.dmp"), [0x4D, 0x44, 0x4D, 0x50]);
+    await File.WriteAllTextAsync(Path.Combine(game, ".t2-mod-manager", "features.txt"), "debug-tools-f4\n");
+    await File.WriteAllBytesAsync(Path.Combine(game, "TMNT2.exe"), [0x4D, 0x5A]);
+    await File.WriteAllBytesAsync(Path.Combine(game, "TMNT.DAT"), [0]);
+
+    IReadOnlyList<DiagnosticFile> files = DiagnosticFiles.Find(paths, game);
+    Assert(files.Count(file => file.Source == DiagnosticSource.GameCrash) == 3 &&
+           files.Count(file => file.Source == DiagnosticSource.GameCrash && file.IsBinary) == 1 &&
+           files.Any(file => file.Source == DiagnosticSource.Game && file.DisplayName == "TMNT2_Slashuur_trace.log") &&
+           files.Any(file => file.Source == DiagnosticSource.ManagerState && file.DisplayName == "features.txt") &&
+           files.Any(file => file.Source == DiagnosticSource.Manager),
+        "Diagnostic files were not classified correctly.");
+
+    string big = Path.Combine(game, "big.log");
+    await File.WriteAllTextAsync(big, new string('a', 4096) + "TAIL");
+    string tail = DiagnosticFiles.ReadTail(big, 1024);
+    Assert(tail.EndsWith("TAIL", StringComparison.Ordinal) && tail.StartsWith("[Showing the last", StringComparison.Ordinal),
+        "Long logs were not tail-truncated.");
+
+    InstalledState state = new() { GameDirectory = game };
+    string report = await DiagnosticFiles.CreateReportAsync(paths, state, "test");
+    using System.IO.Compression.ZipArchive zip = System.IO.Compression.ZipFile.OpenRead(report);
+    HashSet<string> names = zip.Entries.Select(entry => entry.FullName).ToHashSet(StringComparer.Ordinal);
+    Assert(names.Contains("system-info.txt") &&
+           names.Contains("game/TMNT2_crash_20261110_010203_004.dmp") &&
+           names.Contains("game/TMNT2_crash_20261110_010203_004.log") &&
+           names.Contains("game/TMNT2_Slashuur_trace.log") &&
+           names.Contains("game/.t2-mod-manager/features.txt") &&
+           names.Any(name => name.StartsWith("manager/logs/manager-", StringComparison.Ordinal)),
+        "The diagnostic report is missing expected files.");
+    using (StreamReader reader = new(zip.GetEntry("system-info.txt")!.Open()))
+    {
+        string info = await reader.ReadToEndAsync();
+        Assert(info.Contains("Current TMNT2.exe: 2 bytes, SHA-256 ", StringComparison.Ordinal),
+            "The report does not identify the exact game EXE.");
     }
 }

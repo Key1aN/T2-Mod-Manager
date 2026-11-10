@@ -25,6 +25,19 @@ public sealed class ModManagerService
         _backupService = new BackupService(_paths);
     }
 
+    /// <summary>The portable data folder used by this manager instance.</summary>
+    public AppDataPaths Paths => _paths;
+
+    /// <summary>Copies v0.2.2-and-earlier per-user data into the portable folder once.</summary>
+    public Task<PortableMigrationResult> MigrateLegacyDataAsync(
+        IProgress<OperationProgress>? progress = null,
+        CancellationToken cancellationToken = default) =>
+        PortableDataMigration.MigrateIfNeededAsync(
+            _paths,
+            AppDataPaths.LegacyLocalAppDataRoot(),
+            progress,
+            cancellationToken);
+
     public async Task<InstalledState> GetStateAsync(CancellationToken cancellationToken = default)
     {
         InstalledState state = await _stateStore.LoadAsync(cancellationToken).ConfigureAwait(false);

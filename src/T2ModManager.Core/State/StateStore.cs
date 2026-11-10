@@ -32,6 +32,13 @@ public sealed class StateStore(AppDataPaths paths)
             throw new InvalidDataException("Unsupported manager state version.");
         }
 
+        // Package paths are stored relative to the portable data folder so the
+        // manager keeps working after its folder is moved or the drive letter changes.
+        foreach (InstalledMod mod in state.Mods)
+        {
+            mod.PackagePath = paths.ResolveStoredPath(mod.PackagePath);
+        }
+
         return state;
     }
 
@@ -50,7 +57,7 @@ public sealed class StateStore(AppDataPaths paths)
         {
             await JsonSerializer.SerializeAsync(
                 stream,
-                state,
+                ToStoredForm(state),
                 ManifestSerializer.JsonOptions,
                 cancellationToken).ConfigureAwait(false);
             await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
@@ -59,5 +66,30 @@ public sealed class StateStore(AppDataPaths paths)
 
         File.Move(temporary, paths.StateFile, overwrite: true);
     }
-}
 
+    private InstalledState ToStoredForm(InstalledState state)
+    {
+        InstalledState stored = new()
+        {
+            SchemaVersion = state.SchemaVersion,
+            ModCatalogRevision = state.ModCatalogRevision,
+            GameDirectory = state.GameDirectory,
+            GameBuildId = state.GameBuildId,
+            CurrentExecutableSha256 = state.CurrentExecutableSha256,
+            CurrentArchiveSha256 = state.CurrentArchiveSha256,
+            CurrentFeatureStateSha256 = state.CurrentFeatureStateSha256,
+            UpdatedAtUtc = state.UpdatedAtUtc
+        };
+        stored.Mods.AddRange(state.Mods.Select(mod => new InstalledMod
+        {
+            Id = mod.Id,
+            DisplayName = mod.DisplayName,
+            Version = mod.Version,
+            Description = mod.Description,
+            PackagePath = paths.ToStoredPath(mod.PackagePath),
+            Active = mod.Active,
+            InstalledAtUtc = mod.InstalledAtUtc
+        }));
+        return stored;
+    }
+}

@@ -98,3 +98,17 @@ application. MAP naming remains mandatory for future native TMNT2 EXE builds.
   `T2-Mod-Manager-Core-v0.2.2-Clean-Unchecked-First-Run-US.pdb`
 - MAP: not produced; this is a managed .NET/WPF application rather than a
   native TMNT2 executable build.
+
+## v0.2.3 portable data and log page
+
+- Branch: `claude/t2-mod-manager-v0.2.3-portable-logs-us`
+- Workflow: `build-t2-mod-manager-v0.2.3-portable-logs-us`
+- Windows artifact:
+  `T2-Mod-Manager-v0.2.3-Portable-Logs-US-win-x64-run-<run-number>`
+- Application: `T2-Mod-Manager-v0.2.3-Portable-Logs-US.exe` (plus native WPF DLLs)
+- Application symbols: `T2-Mod-Manager-v0.2.3-Portable-Logs-US.pdb`
+- Core symbols: `T2-Mod-Manager-Core-v0.2.3-Portable-Logs-US.pdb`
+- Packager: `T2-Mod-Packager-v0.2.3-Portable-Logs-US.dll`
+- Portable data folder: `T2-Mod-Manager-Data` beside the EXE
+- MAP: not produced because the launcher is a managed .NET/WPF application.
+

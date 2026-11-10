@@ -19,11 +19,16 @@
             </Grid.ColumnDefinitions>
             <StackPanel>
                 <TextBlock Text="T2 Mod Manager" FontSize="27" FontWeight="Bold"/>
-                <TextBlock Text="Version 0.2.2 · TMNT 2: Battle Nexus · US/NA PC" Foreground="{StaticResource MutedBrush}"
+                <TextBlock Text="Version 0.2.3 · Portable · TMNT 2: Battle Nexus · US/NA PC" Foreground="{StaticResource MutedBrush}"
                            FontSize="14" Margin="0,5,0,0"/>
             </StackPanel>
-            <Button Grid.Column="1" x:Name="LaunchButton" Content="Launch Game"
-                    Click="LaunchButton_Click" VerticalAlignment="Center" IsEnabled="False"/>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                <Button x:Name="LogsButton" Content="Logs" Click="LogsButton_Click"
+                        Background="#2B3343" Margin="0,0,10,0"
+                        ToolTip="View manager and game crash logs, or create a report to share"/>
+                <Button x:Name="LaunchButton" Content="Launch Game"
+                        Click="LaunchButton_Click" IsEnabled="False"/>
+            </StackPanel>
         </Grid>
 
         <Border Grid.Row="1" Background="{StaticResource PanelBrush}" CornerRadius="12"
