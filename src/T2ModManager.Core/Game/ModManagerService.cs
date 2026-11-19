@@ -452,10 +452,20 @@ public sealed class ModManagerService
                 throw new InvalidDataException($"Original AFS entry {entryId} hash mismatch.");
             }
 
-            string payloadPath = Path.Combine(stageDirectory, $"afs-entry-{entryId}.lpac");
+            bool isLpac = operation.LogicalPath!.EndsWith(".lpac", StringComparison.OrdinalIgnoreCase);
+            string payloadPath = Path.Combine(
+                stageDirectory,
+                isLpac ? $"afs-entry-{entryId}.lpac" : $"afs-entry-{entryId}.bin");
             await package.ExtractVerifiedPayloadAsync(operation, payloadPath, cancellationToken)
                 .ConfigureAwait(false);
-            _ = LpacValidator.Validate(payloadPath);
+            if (isLpac)
+            {
+                _ = LpacValidator.Validate(payloadPath);
+            }
+            else
+            {
+                AfsPayloadValidator.ValidateNonLpac(operation.LogicalPath!, payloadPath);
+            }
             await RequireFileFingerprintAsync(
                 payloadPath,
                 operation.ExpectedOutputSize!.Value,

@@ -21,8 +21,13 @@ and SHA-256 are verified.
 ### `replace-afs-entry`
 
 Rebuilds an AFS archive while replacing one exact zero-based entry. The
-operation verifies the original entry hash and replacement LPAC hash. All
+operation verifies the original entry hash and the replacement payload hash. All
 unchanged entries and the original name-table bytes are copied directly.
+
+Since v0.2.5 the payload is validated by the kind of its `logicalPath`:
+`*.lpac` must be a structurally valid LPAC; `*.met` (RenderWare Rt2d font
+metrics) must start with `METRICS` and be at most 1 MiB. Other non-LPAC kinds
+are rejected.
 
 ## Resource claims
 

@@ -49,11 +49,12 @@ try
     ModCatalogMigration();
     await ModCatalogMigrationPersistenceAsync(root);
     LpacValidation(root);
+    NonLpacPayloadValidation(root);
     ConflictDetection();
     ComposableManifestValidation();
     await PortableDataMigrationAsync(root);
     await DiagnosticFilesAsync(root);
-    Console.WriteLine("All T2 Mod Manager v0.2.4 composable-mod core tests passed.");
+    Console.WriteLine("All T2 Mod Manager v0.2.5 composable-mod core tests passed.");
     return 0;
 }
 catch (Exception exception)
@@ -116,6 +117,31 @@ static void LpacValidation(string root)
     File.WriteAllBytes(path, bytes);
     LpacValidationResult result = LpacValidator.Validate(path);
     Assert(result.ChunkCount == 1 && result.Chunks[0].Name == "test", "LPAC metadata was parsed incorrectly.");
+}
+
+static void NonLpacPayloadValidation(string root)
+{
+    string metrics = Path.Combine(root, "mainfont.met");
+    File.WriteAllText(metrics, "METRICS1\r\nFont\r\n5\r\n0x41\t0\t0\t68\t76\r\n0x00ba\t0\t0\t8\t8\r\n");
+    AfsPayloadValidator.ValidateNonLpac("fonts/mainfont.met", metrics);
+
+    string notMetrics = Path.Combine(root, "bad.met");
+    File.WriteAllText(notMetrics, "LPAC this is not a metrics file");
+    AssertThrows<InvalidDataException>(
+        () => AfsPayloadValidator.ValidateNonLpac("fonts/mainfont.met", notMetrics),
+        "A .met payload without the METRICS header was accepted.");
+
+    string empty = Path.Combine(root, "empty.met");
+    File.WriteAllBytes(empty, []);
+    AssertThrows<InvalidDataException>(
+        () => AfsPayloadValidator.ValidateNonLpac("fonts/mainfont.met", empty),
+        "An empty AFS payload was accepted.");
+
+    string unknown = Path.Combine(root, "unknown.bin");
+    File.WriteAllBytes(unknown, [1, 2, 3]);
+    AssertThrows<InvalidDataException>(
+        () => AfsPayloadValidator.ValidateNonLpac("demo/pc/demo0020.dat", unknown),
+        "A non-LPAC payload of an unknown kind was accepted.");
 }
 
 static async Task ExeOnlyPackageIntegrationAsync(

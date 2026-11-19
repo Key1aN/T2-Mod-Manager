@@ -120,3 +120,15 @@ application. MAP naming remains mandatory for future native TMNT2 EXE builds.
 - Drop branch: `build-drops/t2-mod-manager-v0.2.4-single-launch-us`
 - Application: `T2-Mod-Manager-v0.2.4-Single-Launch-US.exe` (plus native WPF DLLs)
 
+## v0.2.5 font metrics
+
+- Branch: `claude/t2-mod-manager-v0.2.5-font-metrics-us`
+- Workflow: `build-t2-mod-manager-v0.2.5-font-metrics-us`
+- Windows artifact: `T2-Mod-Manager-v0.2.5-Font-Metrics-US-win-x64-run-<run-number>`
+- Drop branch: `build-drops/t2-mod-manager-v0.2.5-font-metrics-us`
+- Application: `T2-Mod-Manager-v0.2.5-Font-Metrics-US.exe` (plus native WPF DLLs)
+- Application symbols: `T2-Mod-Manager-v0.2.5-Font-Metrics-US.pdb`
+- Core symbols: `T2-Mod-Manager-Core-v0.2.5-Font-Metrics-US.pdb`
+- Packager: `T2-Mod-Packager-v0.2.5-Font-Metrics-US.dll`
+- Change: `replace-afs-entry` accepts RenderWare font metrics (`*.met`) besides LPAC
+  payloads (needed by `HD_Font_v1.0.0_US.t2mod`).

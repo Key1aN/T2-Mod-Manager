@@ -1,6 +1,6 @@
 # T2 Mod Manager
 
-T2 Mod Manager v0.2.4 is a portable, safety-first mod manager for the US/NA
+T2 Mod Manager v0.2.5 is a portable, safety-first mod manager for the US/NA
 32-bit PC release of *TMNT 2: Battle Nexus*.
 
 Compatible `.t2mod` packages can be checked together. The initial composable
@@ -75,6 +75,16 @@ mod checkboxes, and Restore Vanilla are also locked while the game runs, because
 game files must not be replaced under a running game. Crash/fatal files are
 attributed to a run only when they were written between its launch and exit.
 
+## Non-LPAC archive entries (v0.2.5)
+
+`replace-afs-entry` payloads no longer have to be LPAC containers. When the
+operation's `logicalPath` ends in `.lpac` the payload is validated as an LPAC as
+before. RenderWare font metrics (`*.met`, e.g. `fonts/mainfont.met`, AFS entry
+0) are accepted when they start with `METRICS`; any other non-LPAC kind is
+still rejected. Payload and output SHA-256 checks are unchanged. This is what
+the HD Font package needs, because a larger font texture requires scaled
+glyph metrics.
+
 ## Current state
 
 This source package contains the v0.2.3 architecture, UI, package validator,
@@ -118,7 +128,7 @@ dotnet publish src/T2ModManager.App/T2ModManager.App.csproj `
 ```
 
 The GitHub Actions workflow publishes a self-contained Windows build named
-`T2-Mod-Manager-v0.2.4-Single-Launch-US.exe` with its native WPF DLLs beside it.
+`T2-Mod-Manager-v0.2.5-Font-Metrics-US.exe` with its native WPF DLLs beside it.
 
 ## First supported retail fingerprint
 
