@@ -1,38 +1,24 @@
-# HD Font (US) — current: v1.1.0 `HD_Font_v1.1.0_US.t2mod`
+# HD Font v1.0.0 (US) — `HD_Font_v1.0.0_US.t2mod`
 
-The TMNT2 main game font (`MainFont`) rebuilt as **true vector shapes from the original 256×256
-bitmap**. No AI upscaling and no generic smoothing; every glyph re-renders to the original pixels.
+HD remaster of the TMNT2 main game font (`MainFont`) with the original look: letter shapes traced
+at 4× (1024×1024, 32-bit) with the black outline and drop shadow rebuilt to match the original,
+and the PS2/Xbox/GameCube button icons redrawn as sharp circles in their original colours.
+Text size, spacing and layout are unchanged.
 
-* Package SHA-256: `6cfa1248527c136233a880c9418e9ad8985ceeb81814c0941180bcc9b2b4b208`
+* Package SHA-256: `43b22386128516b39fa3bd7d6a01713476e86c021237d8ca1862c6a367fd4b01`
 * Data-only: replaces `TMNT.DAT` entries 0 (`fonts/mainfont.met`) and 1 (`fonts/fonts.lpac`);
   `TMNT2.exe` is not modified, so it combines with every composable core mod.
-* Requires **T2 Mod Manager v0.2.5** or newer. Same mod id as v1.0.0 (`HD_Font`), so it replaces it.
+* Requires **T2 Mod Manager v0.2.5** or newer (older managers reject the `.met` payload).
 
-## How the vectors were made
-1. Exact pixel outline of every letter (texels with ≥ 50% white coverage).
-2. Hand-placed diagonal stairs become the straight lines they depict, and grey corner texels become
-   45° chamfers. Each change is kept only if it matches the original anti-aliased texels at least as
-   well (exact area per texel).
-3. Horizontal/vertical edges slide to the sub-pixel position the grey columns/rows indicate.
-4. Hairline punctuation `( ) " , / %` is fitted as pen strokes, and the ® ring as an ellipse.
-5. The black outline (1.1 texel, mitre) and drop shadow (1.75 texel) are vector offsets fitted to
-   the original alpha.
-Average error against the original pixels: 3.7% coverage per texel.
+| Entry | Vanilla SHA-256 | Replacement SHA-256 | Size |
+| --- | --- | --- | --- |
+| 0 `fonts/mainfont.met` | `85d07160…24dcb21` | see manifest | 4,585 → 4,714 |
+| 1 `fonts/fonts.lpac` | `19a58d9b…1ce688f` | see manifest | 197,504 → 4,325,248 |
 
-The texture is drawn from those vectors at 4× (1024×1024, 32-bit). Glyph metrics are scaled exactly
-4×; the Rt2d line height (taken from the last, 8 px placeholder line of the .met) is unchanged, so
-text size and layout are identical to the original.
+Why the metrics change: RenderWare Rt2d divides glyph pixel coordinates by the real texture size,
+so a 4× texture needs 4× coordinates. The font height comes from the last line of the .met (an
+8 px placeholder), which is left unchanged, so text keeps its size without an EXE change.
 
-## Fonts
-`fonts/T2BattleNexus-Fill.ttf` (letters) and `fonts/T2BattleNexus-Shadow.ttf` (outline + shadow,
-same metrics). Put Shadow in black under Fill to get the in-game look at any size, e.g. for
-thumbnails. Game-specific slots map to real Unicode: `Ⅱ` U+2161, `→` U+2192.
-
-## Tested
-In game under Wine with the retail data and the Cool Lighting v1.0.0 core (data check screen, title,
-main menu, character select). Install / combine with Cool Lighting / uninstall through the v0.2.5
-manager code, with a byte-exact vanilla restore.
-
-## History
-* v1.1.0 — vector reconstruction (this).
-* v1.0.0 — `HD_Font_v1.0.0_US.t2mod`: letters traced at 4× with smoothing (softer, rounded corners).
+Tested: in game under Wine with the retail data and the Cool Lighting v1.0.0 core (title, main
+menu, character select); install / combine with Cool Lighting / uninstall through the v0.2.5
+manager code, with byte-exact vanilla restore.
